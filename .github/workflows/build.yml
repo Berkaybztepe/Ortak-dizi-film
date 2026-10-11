@@ -14,7 +14,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci || npm install
       - run: npm test
+      - name: Oda kodu (aracı üzerinden) testi
+        run: npm run test:relay
 
   e2e:
     name: Uçtan uca (eklenti + uygulama arayüzü)
@@ -42,6 +45,7 @@ jobs:
         with:
           node-version: 22
       - uses: android-actions/setup-android@v3
+      - run: npm ci || npm install
       - name: Derle
         working-directory: android
         run: ./gradlew --no-daemon :core:test :core:installDist :app:assembleRelease
@@ -50,6 +54,8 @@ jobs:
           ODA_SIFRE=gizli PORT=8790 ASSETS_DIR="$PWD/web" android/core/build/install/ortak-izle-sunucu/bin/ortak-izle-sunucu &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8790/health && break; sleep 1; done
           cd server && TEST_PORT=8790 node test.js
+      - name: Kotlin sunucusunu oda koduyla dene
+        run: KOTLIN_SERVER=android/core/build/install/ortak-izle-sunucu/bin/ortak-izle-sunucu npm run test:relay
       - uses: actions/upload-artifact@v4
         with:
           name: OrtakIzle-apk

@@ -68,7 +68,7 @@ $('toggle').onclick = async () => {
   if ($('password').value) settings.password = $('password').value;
   if (settings.enabled && !settings.serverUrl) {
     $('err').hidden = false;
-    $('err').textContent = 'Önce oda adresini yaz.';
+    $('err').textContent = 'Önce oda kodunu yaz.';
     $('serverUrl').focus();
     return;
   }

@@ -4,14 +4,17 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { ROOT, loadPlaywright, chromeOptions, testVideo, routeFakeDisney, startServer, reporter, sleep } from './helpers.mjs';
+import { ROOT, loadPlaywright, chromeOptions, testVideo, routeFakeDisney, startServer, startBroker, TEST_CODE, reporter, sleep } from './helpers.mjs';
 
 const { chromium } = await loadPlaywright();
 const EXT = path.join(ROOT, 'extension');
 const VIDEO = testVideo();
 const SHOTS = process.env.SHOTS_DIR || os.tmpdir();
 const PORT = 8799;
-const srv = await startServer(PORT);
+// Oda kodu yolu: yerel aracı + kodla açılmış oda (farklı evlerdeki gibi)
+const broker = await startBroker(18840, 18841);
+const srv = await startServer(PORT, { ODA_KODU: TEST_CODE, ARACI: broker.ws });
+await sleep(800);
 
 async function browser(name) {
   const ctx = await chromium.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(), 'oi-')), {
@@ -24,12 +27,13 @@ async function browser(name) {
   let [sw] = ctx.serviceWorkers();
   if (!sw) sw = await ctx.waitForEvent('serviceworker');
   const id = sw.url().split('/')[2];
+  await sw.evaluate((url) => (globalThis.__ortakIzleBrokers = [url]), broker.ws);
   const popup = await ctx.newPage();
   await popup.goto(`chrome-extension://${id}/popup.html`);
-  await popup.fill('#serverUrl', `127.0.0.1:${PORT}`);
+  await popup.fill('#serverUrl', 'k7m-4qx');
   await popup.fill('#name', name);
   await popup.click('#toggle');
-  await popup.waitForFunction(() => document.getElementById('chip').textContent.startsWith('Bağlı'), null, { timeout: 5000 });
+  await popup.waitForFunction(() => document.getElementById('chip').textContent.startsWith('Bağlı'), null, { timeout: 15000 });
   return { ctx, popup };
 }
 
@@ -47,7 +51,7 @@ try {
   // Popup üyeleri gösteriyor mu
   await sleep(500);
   const members = await A.popup.locator('#members').innerText();
-  members.includes('Kardeş') ? pass('Popup salondakileri gösteriyor') : fail('Popup üyeler: ' + members);
+  members.includes('Kardeş') ? pass('Popup odadakileri gösteriyor') : fail('Popup üyeler: ' + members);
   await A.popup.screenshot({ path: `${SHOTS}/ext-popup.png` });
 
   await pb.goto('https://www.disneyplus.com/home');
@@ -102,7 +106,7 @@ try {
   // Yükleniyor (buffer): üçüncü bir katılımcı aynı bölümde yükleniyor
   const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
   await new Promise((r) => (ws.onopen = r));
-  ws.send(JSON.stringify({ t: 'join', name: 'Kuzen', room: 'salon' }));
+  ws.send(JSON.stringify({ t: 'join', name: 'Kuzen', room: 'salon' })); // üçüncü kişi aynı Wi-Fi'dan, adresle
   await sleep(300);
   ws.send(JSON.stringify({ t: 'nav', url: 'https://www.disneyplus.com/play/loki', title: 'Loki', platform: 'Disney+', watching: true }));
   await sleep(300);
@@ -140,6 +144,7 @@ try {
   fail(e.stack);
 } finally {
   srv.kill();
+  await broker.close();
 }
 console.log(R.failed ? `BAŞARISIZ (${R.failed})` : 'Eklenti uçtan uca testi geçti ✔');
 process.exit(R.failed ? 1 : 0);

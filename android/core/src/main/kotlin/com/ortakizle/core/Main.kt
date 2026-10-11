@@ -44,11 +44,20 @@ fun main() {
     println("  Bu cihazda:      http://localhost:$p")
     for (ip in localAddresses()) println("  Aynı Wi-Fi'da:   http://$ip:$p")
     println("\n  Eklentideki \"Sunucu adresi\" alanına yukarıdakilerden birini yazın.")
-    println("  Farklı evlerdeyseniz README'deki Tailscale adımlarına bakın.")
     println(if (password != null) "  Şifre: AÇIK (ODA_SIFRE)\n" else "  Şifre: kapalı (ODA_SIFRE ile açabilirsiniz)\n")
+
+    // Oda kodu (farklı evlerden katılım): ODA_KODU, isteğe bağlı ARACI=tcp://127.0.0.1:1883,...
+    val relay = System.getenv("ODA_KODU")?.takeIf { it.isNotBlank() }?.let { code ->
+        val brokers = System.getenv("ARACI")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: DEFAULT_BROKERS
+        Relay(code, server, brokers) { println("${LocalTime.now().format(fmt)} $it") }.also {
+            it.start()
+            println("  Oda kodu: ${RoomCode.format(code)}  (farklı evlerden bu kodla katılınır)\n")
+        }
+    }
 
     val done = CountDownLatch(1)
     Runtime.getRuntime().addShutdownHook(Thread {
+        relay?.stop()
         server.stop()
         done.countDown()
     })

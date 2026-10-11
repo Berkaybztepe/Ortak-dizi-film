@@ -5,6 +5,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Log
 import com.ortakizle.core.AssetSource
+import com.ortakizle.core.Relay
 import com.ortakizle.core.RoomServer
 import org.json.JSONArray
 import org.json.JSONObject
@@ -21,6 +22,8 @@ object Host {
         private set
     @Volatile var displayName: String = ""
         private set
+    @Volatile var relay: Relay? = null
+        private set
     private var nsdListener: NsdManager.RegistrationListener? = null
 
     val hosting: Boolean get() = server?.isRunning == true
@@ -28,8 +31,12 @@ object Host {
 
     // Oda sunucusunu başlatır; zaten açıksa dokunmaz. Hata metnini döndürür (null = başarılı).
     @Synchronized
-    fun start(context: Context, password: String, userName: String): String? {
-        if (hosting) return null
+    fun start(context: Context, password: String, userName: String, code: String): String? {
+        if (hosting) {
+            // Kod değiştiyse aracı bağlantısını yenile
+            if (code.isNotBlank() && relay?.code != com.ortakizle.core.RoomCode.normalize(code)) startRelay(code)
+            return null
+        }
         val app = context.applicationContext
         val assets = AssetSource { path ->
             try {
@@ -47,6 +54,7 @@ object Host {
                 server = s
                 displayName = name
                 register(app, p, name)
+                if (code.isNotBlank()) startRelay(code)
                 return null
             } catch (e: Exception) {
                 lastError = e
@@ -56,9 +64,18 @@ object Host {
         return "Oda açılamadı: ${lastError?.message ?: "port kullanımda"}"
     }
 
+    // Farklı evlerden oda koduyla katılım için aracı sunuculara bağlan (arka planda)
+    private fun startRelay(code: String) {
+        relay?.stop()
+        val s = server ?: return
+        relay = Relay(code, s, log = { Log.i(TAG, it) }).also { r -> Thread { r.start() }.start() }
+    }
+
     @Synchronized
     fun stop(context: Context) {
         unregister(context.applicationContext)
+        relay?.let { r -> Thread { r.stop() }.start() }
+        relay = null
         server?.stop()
         server = null
     }
@@ -146,6 +163,8 @@ object Host {
         o.put("ok", hosting)
         o.put("port", port)
         o.put("name", displayName)
+        o.put("code", relay?.code ?: "")
+        o.put("online", relay?.online == true)
         val arr = JSONArray()
         if (hosting) {
             for ((label, address) in addresses(port)) arr.put(JSONObject().put("label", label).put("address", address))

@@ -82,9 +82,10 @@ class HostService : Service() {
 
     private fun summaryText(): String {
         val people = Host.server?.summary()?.flatMap { it.second } ?: emptyList()
+        val code = Host.relay?.code?.let { "Kod ${com.ortakizle.core.RoomCode.format(it)} · " } ?: ""
         return when {
-            people.isEmpty() -> "Kimse bağlı değil · ${Host.addresses(Host.port).firstOrNull()?.second ?: "adres yok"}"
-            else -> "${people.size} kişi: ${people.joinToString(", ")}"
+            people.isEmpty() -> "${code}Kimse bağlı değil"
+            else -> "$code${people.size} kişi: ${people.joinToString(", ")}"
         }
     }
 

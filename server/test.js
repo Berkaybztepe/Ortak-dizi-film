@@ -6,9 +6,15 @@ const assert = require('assert');
 process.env.ODA_SIFRE = 'gizli';
 const EXTERNAL = process.env.TEST_PORT ? parseInt(process.env.TEST_PORT, 10) : 0;
 const { server } = EXTERNAL ? { server: null } : require('./server');
+// Oda koduyla (aracı üzerinden) dene: TEST_RELAY_CODE=ABC123 TEST_RELAY_BROKER=ws://127.0.0.1:18831/mqtt
+const RELAY_CODE = process.env.TEST_RELAY_CODE || '';
+const RELAY_BROKER = process.env.TEST_RELAY_BROKER || '';
+if (RELAY_CODE) require('../web/room-client.js');
 
 function client(port) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const ws = RELAY_CODE
+    ? new globalThis.OrtakIzleRoom.RelaySocket(RELAY_CODE, [RELAY_BROKER])
+    : new WebSocket(`ws://127.0.0.1:${port}/ws`);
   const inbox = [];
   const waiters = [];
   ws.onmessage = (e) => {
@@ -24,12 +30,13 @@ function client(port) {
     next(pred, ms = 2000) {
       const i = inbox.findIndex(pred);
       if (i >= 0) return Promise.resolve(inbox.splice(i, 1)[0]);
+      if (RELAY_CODE) ms *= 2; // aracı üzerinden biraz daha yavaş
       return new Promise((resolve, reject) => {
         waiters.push({ pred, resolve });
         setTimeout(() => reject(new Error('zaman aşımı: ' + pred)), ms);
       });
     },
-    none(pred, ms = 300) {
+    none(pred, ms = RELAY_CODE ? 600 : 300) {
       return new Promise((resolve, reject) =>
         setTimeout(() => (inbox.some(pred) ? reject(new Error('beklenmeyen mesaj')) : resolve()), ms)
       );
@@ -164,6 +171,7 @@ function client(port) {
 
   b.close();
   c.close();
+  if (RELAY_CODE) await new Promise((r) => setTimeout(r, 800)); // "bye" mesajları gitsin
   if (server) server.close();
   console.log('Tüm testler geçti ✔');
   process.exit(0);

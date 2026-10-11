@@ -62,8 +62,8 @@ export async function routeFakeDisney(ctx, video) {
   });
 }
 
-export async function startServer(port) {
-  const srv = spawn(process.execPath, [path.join(ROOT, 'server/server.js')], { env: { ...process.env, PORT: String(port), ODA_SIFRE: '' } });
+export async function startServer(port, extraEnv = {}) {
+  const srv = spawn(process.execPath, [path.join(ROOT, 'server/server.js')], { env: { ...process.env, PORT: String(port), ODA_SIFRE: '', ...extraEnv } });
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('Sunucu açılmadı')), 5000);
     srv.stdout.on('data', (d) => /çalışıyor/.test(String(d)) && (clearTimeout(t), resolve()));
@@ -84,5 +84,8 @@ export function reporter() {
     },
   };
 }
+
+export { startBroker } from './broker.mjs';
+export const TEST_CODE = 'K7M4QX';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

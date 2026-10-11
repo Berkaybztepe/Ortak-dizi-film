@@ -195,6 +195,20 @@ svg.i { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none;
 .scan { display: flex; align-items: center; gap: 8px; font-size: var(--t-sm); color: var(--text-mute); }
 .scan .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 .row { display: flex; gap: 8px; }
+.codeform { display: flex; flex-direction: column; gap: 10px; }
+.input.code { min-height: 64px; text-align: center; font: 600 30px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+.input.code::placeholder { color: var(--surface-3); font-weight: 600; letter-spacing: .14em; }
+.codeform .btn { min-height: 52px; }
+.more { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.more summary { cursor: pointer; color: var(--text-dim); font-size: var(--t-sm); font-weight: 700; list-style: none; display: flex; align-items: center; gap: 8px; }
+.more summary::before { content: '+'; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--accent); font-weight: 800; }
+.more[open] summary::before { content: '−'; }
+.more[open] { gap: 12px; }
+.more > * + * { margin-top: 10px; }
+.addr.small .v { font-size: var(--t-sm); }
+.online { display: inline-flex; align-items: center; gap: 6px; }
+.online::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--on-accent); opacity: .35; }
+.online.on::before { opacity: 1; box-shadow: 0 0 0 3px rgba(22, 8, 3, .18); }
 .row > .input { flex: 1; min-width: 0; }
 
 /* Oda kartı (turuncu): en göze çarpan öğe */

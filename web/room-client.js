@@ -47,10 +47,7 @@
   function normalizeCode(code) {
     return String(code || '')
       .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '')
-      .replace(/O/g, '0') // yazım hatalarını affet
-      .replace(/0/g, 'Q')
-      .replace(/[I1L]/g, 'J');
+      .replace(/[^A-Z0-9]/g, '');
   }
   function isCode(text) {
     return /^[A-Z0-9]{6}$/.test(normalizeCode(text)) && !/[.:]/.test(String(text));
@@ -216,7 +213,8 @@
       this.links = [];
       this.active = null;
       this.lastRx = Date.now();
-      this._start(code, brokers || BROKERS.map((b) => b.ws));
+      // Testlerde yerel aracı kullanılır (globalThis.__ortakIzleBrokers)
+      this._start(code, brokers || root.__ortakIzleBrokers || BROKERS.map((b) => b.ws));
     }
     async _start(code, urls) {
       try {
@@ -230,7 +228,8 @@
       if (this.readyState === 3) return;
       const hello = JSON.stringify({ _: 'hello', v: 1 });
       for (const url of urls) {
-        const link = new Mqtt(url, 'oi-' + this.cid + '-' + this.links.length, {
+        const link = { mqtt: null, timer: null };
+        link.mqtt = new Mqtt(url, 'oi-' + this.cid + '-' + this.links.length, {
           onConnect: () => {
             link.mqtt.subscribe(this.down);
             const say = async () => {
@@ -240,28 +239,31 @@
             say();
             link.timer = setInterval(say, 1500);
           },
-          onMessage: async (t, payload) => {
-            let text;
-            try {
-              text = await open(this.key, payload);
-            } catch {
-              return;
-            }
-            this._rx(link, text);
+          onMessage: (t, payload) => {
+            // Şifre çözme eşzamansız: mesaj sırası bozulmasın diye zincirle
+            link.rx = (link.rx || Promise.resolve()).then(async () => {
+              let text;
+              try {
+                text = await open(this.key, payload);
+              } catch {
+                return;
+              }
+              this._rx(link, text);
+            });
           },
           onClose: () => {
             clearInterval(link.timer);
+            if (!this.links.includes(link)) return setTimeout(() => this._checkAllClosed(), 0);
             if (this.active === link) this._lost();
             else if (!this.active && this.links.every((l) => l.mqtt.closed)) this._fail();
           },
         });
-        link.mqtt = link.mqtt || null;
         this.links.push(link);
-        link.mqtt = link.mqtt || link.__m;
       }
-      // Mqtt nesnesini bağla (yapıcıda this yoktu)
-      this.links.forEach((l, i) => (l.mqtt = l.mqtt || l._m));
       this.giveUp = setTimeout(() => !this.active && this._fail(), 12000);
+    }
+    _checkAllClosed() {
+      if (!this.active && this.links.length && this.links.every((l) => l.mqtt.closed)) this._fail();
     }
     _rx(link, text) {
       this.lastRx = Date.now();
@@ -291,7 +293,11 @@
     }
     send(text) {
       if (this.readyState !== 1 || !this.active) return;
-      seal(this.key, String(text)).then((b) => this.active && this.active.mqtt.publish(this.up, b));
+      const link = this.active;
+      this.tx = (this.tx || Promise.resolve()).then(async () => {
+        const b = await seal(this.key, String(text));
+        if (this.active === link) link.mqtt.publish(this.up, b);
+      });
     }
     close() {
       if (this.readyState === 3) return;
@@ -381,20 +387,26 @@
 
     _open() {
       if (!this.config) return;
-      let url;
-      try {
-        url = toWsUrl(this.config.server);
-      } catch (e) {
-        this._setState('hata', 'Sunucu adresi geçersiz.');
-        return;
-      }
-      this._setState('bağlanıyor', '');
+      const viaCode = !!this.config.code;
       let ws;
-      try {
-        ws = new WebSocket(url);
-      } catch {
-        this._setState('hata', 'Sunucu adresi geçersiz.');
-        return;
+      if (viaCode) {
+        this._setState('bağlanıyor', '');
+        ws = new RelaySocket(this.config.code, this.config.brokers);
+      } else {
+        let url;
+        try {
+          url = toWsUrl(this.config.server);
+        } catch (e) {
+          this._setState('hata', 'Sunucu adresi geçersiz.');
+          return;
+        }
+        this._setState('bağlanıyor', '');
+        try {
+          ws = new WebSocket(url);
+        } catch {
+          this._setState('hata', 'Sunucu adresi geçersiz.');
+          return;
+        }
       }
       this.ws = ws;
       this.bestRtt = Infinity;
@@ -438,7 +450,9 @@
           ? wasJoined
             ? 'Bağlantı koptu. Yeniden bağlanıyor…'
             : 'Sunucu bağlantıyı kapattı.'
-          : 'Sunucuya ulaşılamadı. Adres doğru mu, sunucu açık mı?';
+          : viaCode
+            ? 'Bu kodla açık bir oda bulunamadı. Kod doğru mu, odayı açan cihazda uygulama açık mı?'
+            : 'Sunucuya ulaşılamadı. Adres doğru mu, sunucu açık mı?';
         this._setState('hata', err);
         const delay = Math.min(1000 * 2 ** this.retry++, 10000);
         this.retryTimer = setTimeout(() => this._open(), delay);
@@ -587,5 +601,19 @@
     }
   }
 
-  root.OrtakIzleRoom = { RoomClient, toWsUrl, displayAddress };
+  root.OrtakIzleRoom = {
+    RoomClient,
+    RelaySocket,
+    Mqtt,
+    BROKERS,
+    toWsUrl,
+    displayAddress,
+    normalizeCode,
+    formatCode,
+    isCode,
+    newCode,
+    relayKeys,
+    seal,
+    open,
+  };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

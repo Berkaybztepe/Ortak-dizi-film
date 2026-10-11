@@ -445,6 +445,99 @@ server.on('upgrade', (req, sock) => {
   ws.onclose = () => leave(client);
 });
 
+// ---------------------------------------------------------------------------
+// Oda kodu: internet üzerinden (aracı MQTT sunucuları) bağlanan istemciler
+// ---------------------------------------------------------------------------
+
+async function startRelay(code, brokerUrls) {
+  require('../web/room-client.js');
+  const R = globalThis.OrtakIzleRoom;
+  const { topic, key } = await R.relayKeys(code);
+  const peers = new Map(); // cid -> { client, link, lastSeen, tx }
+
+  function publish(peer, obj) {
+    const text = typeof obj === 'string' ? obj : JSON.stringify(obj);
+    const link = peer.link;
+    peer.tx = peer.tx.then(async () => {
+      if (!link.mqtt.closed) link.mqtt.publish(`${topic}/down/${peer.cid}`, await R.seal(key, text));
+    });
+  }
+
+  function drop(cid) {
+    const peer = peers.get(cid);
+    if (!peer) return;
+    peers.delete(cid);
+    leave(peer.client);
+  }
+
+  function onText(link, cid, text) {
+    let ctl = null;
+    if (text.startsWith('{"_"')) {
+      try {
+        ctl = JSON.parse(text);
+      } catch {}
+    }
+    let peer = peers.get(cid);
+    if (ctl && ctl._ === 'hello') {
+      if (!peer) {
+        peer = { cid, link, lastSeen: Date.now(), tx: Promise.resolve() };
+        const client = { id: crypto.randomBytes(4).toString('hex'), room: null, name: '', url: null };
+        client.ws = { alive: true, send: (obj) => publish(peer, obj), ping() { this.alive = true; }, close: () => drop(cid) };
+        peer.client = client;
+        peers.set(cid, peer);
+      }
+      peer.link = link;
+      peer.lastSeen = Date.now();
+      publish(peer, { _: 'hi', name: SERVER_NAME });
+      return;
+    }
+    if (ctl && ctl._ === 'bye') return drop(cid);
+    if (!peer) {
+      // Sunucu yeniden başlamış: istemci baştan bağlansın
+      const tmp = { cid, link, tx: Promise.resolve() };
+      publish(tmp, { _: 'reset' });
+      return;
+    }
+    peer.link = link;
+    peer.lastSeen = Date.now();
+    handle(peer.client, text);
+  }
+
+  function connect(url, attempt = 0) {
+    const link = { url, rx: Promise.resolve() };
+    link.mqtt = new R.Mqtt(url, 'oi-h-' + crypto.randomBytes(6).toString('hex'), {
+      onConnect: () => {
+        attempt = 0;
+        link.mqtt.subscribe(`${topic}/up/+`);
+        log(`Oda kodu hazır (${new URL(url).hostname})`);
+      },
+      onMessage: (t, payload) => {
+        const cid = t.slice(t.lastIndexOf('/') + 1);
+        if (!/^[0-9a-f]{16}$/.test(cid)) return;
+        link.rx = link.rx.then(async () => {
+          let text;
+          try {
+            text = await R.open(key, payload);
+          } catch {
+            return;
+          }
+          onText(link, cid, text);
+        });
+      },
+      onClose: () => {
+        setTimeout(() => connect(url, attempt + 1), Math.min(2000 * 2 ** attempt, 60000)).unref();
+      },
+    });
+  }
+  for (const url of brokerUrls) connect(url);
+
+  // 45 sn'dir ses vermeyen istemci gitmiş sayılır (istemciler 15 sn'de bir ping atar)
+  setInterval(() => {
+    const now = Date.now();
+    for (const [cid, p] of peers) if (now - p.lastSeen > 45000) drop(cid);
+  }, 10000).unref();
+}
+
 // Ölü bağlantıları temizle
 setInterval(() => {
   for (const room of rooms.values()) {
@@ -471,7 +564,16 @@ function localAddresses() {
   return out;
 }
 
+const RELAY_CODE = process.env.ODA_KODU || '';
+
 if (require.main === module) {
+  if (RELAY_CODE) {
+    require('../web/room-client.js');
+    const R = globalThis.OrtakIzleRoom;
+    const brokers = process.env.ARACI ? process.env.ARACI.split(',') : R.BROKERS.map((b) => b.ws);
+    startRelay(RELAY_CODE, brokers).catch((e) => console.error('Oda kodu başlatılamadı:', e));
+    console.log(`\n  Oda kodu: ${R.formatCode(RELAY_CODE)}  (farklı evlerden bu kodla katılınır)`);
+  }
   server.listen(PORT, '0.0.0.0', () => {
     console.log('\n  Ortak İzle sunucusu çalışıyor 🎬\n');
     console.log(`  Bu cihazda:      http://localhost:${PORT}`);
@@ -482,4 +584,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { server };
+module.exports = { server, startRelay };

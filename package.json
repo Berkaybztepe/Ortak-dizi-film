@@ -7,11 +7,16 @@
     "start": "node server/server.js",
     "test": "node server/test.js && node tools/sync-shared.mjs --check",
     "test:e2e": "node tests/e2e-extension.mjs && node tests/e2e-app.mjs",
-    "sync": "node tools/sync-shared.mjs"
+    "sync": "node tools/sync-shared.mjs",
+    "test:relay": "node tests/relay.mjs"
   },
   "devDependencies": {
-    "playwright": "1.56.1"
+    "aedes": "^0.51.3",
+    "playwright": "1.56.1",
+    "ws": "^8.18.0"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "license": "MIT"
 }

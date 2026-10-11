@@ -48,7 +48,8 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 private const val TAG = "OrtakIzle"
-private const val UI_URL = "http://appassets.androidplatform.net/index.html"
+// https: Web Crypto (oda kodu şifrelemesi) yalnızca güvenli bağlamda çalışır
+private const val UI_URL = "https://appassets.androidplatform.net/index.html"
 
 // Ekran düzeni:
 //   salon  : arayüz tam ekran, oynatıcı gizli
@@ -166,7 +167,6 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun setupUi() {
         val loader = WebViewAssetLoader.Builder()
-            .setHttpAllowed(true)
             .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this).let { h ->
                 WebViewAssetLoader.PathHandler { path -> h.handle("web/" + path.ifEmpty { "index.html" }) }
             })
@@ -179,6 +179,8 @@ class MainActivity : ComponentActivity() {
             allowFileAccess = false
             allowContentAccess = false
             textZoom = 100
+            // Aynı Wi-Fi'daki odaya ws:// ile bağlanabilmek için
+            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         }
         ui.isVerticalScrollBarEnabled = false
         ui.overScrollMode = View.OVER_SCROLL_NEVER
@@ -217,8 +219,8 @@ class MainActivity : ComponentActivity() {
         fun getInfo(): String = Host.info().toString()
 
         @JavascriptInterface
-        fun startHost(password: String?, userName: String?): String {
-            val err = Host.start(this@MainActivity, password ?: "", userName ?: "")
+        fun startHost(password: String?, userName: String?, code: String?): String {
+            val err = Host.start(this@MainActivity, password ?: "", userName ?: "", code ?: "")
             if (err != null) return JSONObject().put("ok", false).put("error", err).toString()
             runOnUiThread {
                 askNotificationPermission()

@@ -43,7 +43,10 @@ function updateBadge() {
 
 function apply() {
   if (settings.enabled && settings.serverUrl) {
-    client.connect({ server: settings.serverUrl, name: settings.name || 'Misafir', room: settings.room, password: settings.password });
+    const base = { name: settings.name || 'Misafir', room: settings.room, password: settings.password };
+    // Oda kodu (K7M-4QX) ise internet üzerinden, değilse adrese doğrudan bağlan
+    if (OrtakIzleRoom.isCode(settings.serverUrl)) client.connect({ ...base, code: OrtakIzleRoom.normalizeCode(settings.serverUrl) });
+    else client.connect({ ...base, server: settings.serverUrl });
   } else {
     client.disconnect();
   }

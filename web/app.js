@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  const { RoomClient, displayAddress } = window.OrtakIzleRoom;
+  const { RoomClient, displayAddress, isCode, normalizeCode, formatCode, newCode } = window.OrtakIzleRoom;
   const params = new URLSearchParams(location.search);
   const DEMO = params.get('demo');
   const N = window.OrtakNative || null;
@@ -68,7 +68,8 @@
   }
 
   // Yerel ayarlar
-  const DEFAULTS = { name: '', lastServer: '', room: 'salon', password: '', autoFollow: false, desktop: true, awake: true };
+  // lastCode: en son katılınan oda kodu, hostCode: bu cihazda açılan odanın kalıcı kodu
+  const DEFAULTS = { name: '', lastServer: '', lastCode: '', hostCode: '', room: 'salon', password: '', autoFollow: false, desktop: true, awake: true };
   const settings = (() => {
     try {
       return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('ortak-izle') || '{}') };
@@ -442,23 +443,55 @@
   }
 
   // ---------------------------------------------------------------- bağlantı
-  function connectTo(server) {
+  // Oda koduyla (internet) ya da adresle (aynı ağ) bağlan
+  function connectTo(target) {
     hideJoinError();
-    settings.lastServer = server;
-    save();
-    client.connect({ server, name: settings.name, room: settings.room, password: settings.password });
+    const base = { name: settings.name, room: settings.room, password: settings.password };
+    if (isCode(target)) {
+      settings.lastCode = normalizeCode(target);
+      settings.lastServer = '';
+      save();
+      client.connect({ ...base, code: settings.lastCode });
+    } else {
+      settings.lastServer = target;
+      settings.lastCode = '';
+      save();
+      client.connect({ ...base, server: target });
+    }
     render();
   }
 
   function startHost() {
-    const r = native.json('startHost', settings.password || '', settings.name || '');
+    if (!settings.hostCode) {
+      settings.hostCode = newCode();
+      save();
+    }
+    const r = native.json('startHost', settings.password || '', settings.name || '', settings.hostCode);
     if (!r || !r.ok) {
       showJoinError(r?.error || 'Oda açılamadı.');
       return;
     }
     ui.host = r;
-    connectTo(`127.0.0.1:${r.port}`);
+    // Odayı açan cihaz kendi sunucusuna doğrudan bağlanır
+    hideJoinError();
+    settings.lastServer = `127.0.0.1:${r.port}`;
+    settings.lastCode = '';
+    save();
+    client.connect({ server: settings.lastServer, name: settings.name, room: settings.room, password: settings.password });
+    render();
   }
+
+  // Oda açıkken aracı bağlantısının durumunu (internetten ulaşılabilir mi) yokla
+  setInterval(() => {
+    if (ENV !== 'app' || !ui.host?.hosting) return;
+    const info = native.json('getInfo');
+    if (!info) return;
+    if (!info.hosting) return window.OI.onHostState(info);
+    if (info.online !== ui.host.online || info.addresses?.length !== ui.host.addresses?.length) {
+      ui.host = info;
+      renderTicket();
+    }
+  }, 4000);
 
   function leave() {
     if (ui.playerOpen) closePlayer();
@@ -468,6 +501,7 @@
       ui.host = null;
     }
     settings.lastServer = '';
+    settings.lastCode = '';
     save();
     ui.joinedAt = null;
     render();
@@ -482,12 +516,19 @@
     $('joinErr').hidden = true;
   }
 
+  function currentCode() {
+    if (ui.host?.hosting) return ui.host.code || settings.hostCode;
+    return client.config?.code || '';
+  }
+
   function inviteText() {
+    const code = currentCode();
+    if (code) {
+      return `Ortak İzle odama gel 🍿\nOda kodu: ${formatCode(code)}\nUygulamada "Oda kodunu yaz" kısmına gir, birlikte izleyelim.`;
+    }
     const addrs = (ui.host?.addresses || []).map((a) => `${a.label}: ${a.address}`);
     const server = addrs.length ? addrs.join('\n') : displayAddress(settings.lastServer || location.host);
-    return `Ortak İzle odama gel.\nUygulamada "Bir odaya katıl" kısmına şu adresi yaz:\n${server}${
-      settings.password ? '\nŞifreyi ayrıca söyleyeceğim.' : ''
-    }`;
+    return `Ortak İzle odama gel.\nŞu adresle bağlan:\n${server}`;
   }
 
   async function share() {
@@ -579,7 +620,13 @@
     const connected = client.state === 'bağlı' && !!client.me;
     const owner = ui.host?.hosting ? settings.name : (client.serverName || '').split(' · ')[0];
     $('tkRoom').textContent = owner ? `${possessive(owner)} odası` : 'Ortak oda';
-    $('tkServer').textContent = ui.host?.hosting ? 'Oda bu cihazda açık' : connected ? 'Odadasın' : 'Bağlanıyor';
+    const tk = $('tkServer');
+    tk.className = 'eyebrow';
+    if (ui.host?.hosting) {
+      tk.replaceChildren(
+        h('span', { class: `online${ui.host.online ? ' on' : ''}` }, ui.host.online ? 'Oda açık · internetten ulaşılabilir' : 'Oda açık · internete bağlanıyor…')
+      );
+    } else tk.textContent = connected ? 'Odadasın' : 'Bağlanıyor…';
     $('tkTime').textContent = ui.joinedAt ? clock(ui.joinedAt) : '—';
     $('tkSeatCount').textContent = connected ? String(client.members.length) : '—';
     $('tkPing').textContent = connected && ui.rtt != null ? `${Math.round(ui.rtt)} ms` : '—';
@@ -591,14 +638,19 @@
           })
         : [h('span', { class: 'seat' }, client.state === 'hata' ? 'Bağlantı bekleniyor…' : 'Bağlanıyor…')])
     );
-    const addrs = ui.host?.hosting
-      ? ui.host.addresses || []
-      : [{ label: 'Oda adresi', address: displayAddress(settings.lastServer || location.host) }];
+    const code = currentCode();
+    const rows = [];
+    if (code) rows.push({ label: 'Oda kodu', address: formatCode(code), cls: 'big' });
+    if (ui.host?.hosting) {
+      const wifi = (ui.host.addresses || []).find((a) => a.label === 'Wi-Fi');
+      if (wifi) rows.push({ label: 'Aynı Wi-Fi için adres', address: wifi.address, cls: 'small' });
+    } else if (!code) {
+      rows.push({ label: 'Oda adresi', address: displayAddress(settings.lastServer || location.host) });
+    }
     $('tkAddrs').replaceChildren(
-      ...(addrs.length
-        ? addrs.map((a) => h('div', { class: 'addr' }, h('span', { class: 'k' }, a.label), h('span', { class: 'v' }, a.address)))
-        : [h('div', { class: 'addr' }, h('span', { class: 'k' }, 'Adres'), h('span', { class: 'v' }, 'Wi-Fi bağlantısı yok'))])
+      ...rows.map((a) => h('div', { class: `addr ${a.cls || ''}` }, h('span', { class: 'k' }, a.label), h('span', { class: 'v' }, a.address)))
     );
+    $('shareBtn').hidden = !code && ENV !== 'web';
     $('leaveTxt').textContent = ui.host?.hosting ? 'Odayı kapat' : 'Ayrıl';
     $('leaveBtn').hidden = ENV === 'web';
   }
@@ -769,6 +821,30 @@
     ui.view = 'lobby';
     boot();
   });
+  $('codeForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = $('codeInput').value;
+    if (!isCode(v)) {
+      showJoinError('Oda kodu 6 harf/rakamdan oluşur, örneğin K7M-4QX.');
+      return $('codeInput').focus();
+    }
+    connectTo(normalizeCode(v));
+  });
+  $('codeInput').addEventListener('input', (e) => {
+    const n = normalizeCode(e.target.value).slice(0, 6);
+    const f = n.length > 3 ? `${n.slice(0, 3)}-${n.slice(3)}` : n;
+    if (e.target.value !== f) e.target.value = f;
+  });
+  $('newCodeBtn').addEventListener('click', () => {
+    settings.hostCode = newCode();
+    save();
+    if (ui.host?.hosting) {
+      const r = native.json('startHost', settings.password || '', settings.name || '', settings.hostCode);
+      if (r?.ok) ui.host = r;
+    }
+    renderTicket();
+    $('codeHint').textContent = `Yeni kod: ${formatCode(settings.hostCode)}. Kardeşine yeniden göndermeyi unutma.`;
+  });
   $('joinForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const v = $('addrInput').value.trim();
@@ -912,6 +988,8 @@
     if (info?.hosting) {
       ui.host = info;
       connectTo(`127.0.0.1:${info.port}`);
+    } else if (settings.lastCode) {
+      connectTo(settings.lastCode);
     } else if (settings.lastServer && !/^127\.0\.0\.1|^localhost/.test(settings.lastServer)) {
       connectTo(settings.lastServer);
     } else {
@@ -920,6 +998,7 @@
       renderFound();
     }
     if (settings.lastServer) $('addrInput').value = displayAddress(settings.lastServer);
+    if (settings.lastCode) $('codeInput').value = formatCode(settings.lastCode);
   }
 
   // ---------------------------------------------------------------- önizleme verisi
@@ -953,7 +1032,7 @@
       client.typing = { k1: { name: 'Kardeş', until: now + 1e9 } };
       ui.joinedAt = now - 1800000;
       ui.rtt = 23;
-      ui.host = { hosting: true, port: 8787, addresses: [{ label: 'Wi-Fi', address: '192.168.1.20:8787' }, { label: 'Tailscale', address: '100.101.102.103:8787' }] };
+      ui.host = { hosting: true, port: 8787, code: 'K7M4QX', online: true, addresses: [{ label: 'Wi-Fi', address: '192.168.1.20:8787' }] };
       ui.lastNav.k1 = now;
     };
     if (kind === 'welcome') {

@@ -72,28 +72,34 @@
         <div class="section-head"><h2>Odaya bağlan</h2></div>
         <div class="choices">
           <div class="choice" id="hostChoice">
-            <span class="eyebrow">Bu cihaz</span>
-            <h3>Odayı burada aç</h3>
-            <p>Bu cihaz oda sunucusu olur. Uygulama arka planda da açık kalır.</p>
+            <span class="eyebrow">Odayı sen aç</span>
+            <h3>Oda aç, kodu gönder</h3>
             <ol class="steps">
-              <li><span><b>Odayı aç.</b> Ekranda bu cihazın adresi çıkar.</span></li>
-              <li><span><b>Adresi gönder.</b> Aynı Wi-Fi'daysanız kardeşin seni listede zaten görür.</span></li>
+              <li><span><b>Odayı aç.</b> Sana 6 harfli bir oda kodu verilir.</span></li>
+              <li><span><b>Kodu kardeşine gönder.</b> Farklı şehirde bile olsa o kodla katılır.</span></li>
               <li><span><b>Aynı bölümü açın.</b> Oynat, durdur, sar: ikinizde birden olur.</span></li>
             </ol>
             <div class="actions"><button class="btn primary" id="hostBtn">Odayı aç</button></div>
           </div>
           <div class="choice">
-            <span class="eyebrow">Başka cihaz</span>
-            <h3>Bir odaya katıl</h3>
-            <div class="found" id="foundList"></div>
-            <div class="scan" id="scanNote"><span class="pulse"></span><span>Aynı ağdaki odalar aranıyor…</span></div>
-            <form class="row" id="joinForm" autocomplete="off">
-              <label class="sr" for="addrInput">Oda adresi</label>
-              <input class="input mono" id="addrInput" placeholder="192.168.1.20:8787" inputmode="url" autocapitalize="off" spellcheck="false">
-              <button class="btn" type="submit">Katıl</button>
+            <span class="eyebrow">Kodla katıl</span>
+            <h3>Oda kodunu yaz</h3>
+            <form class="codeform" id="codeForm" autocomplete="off">
+              <label class="sr" for="codeInput">Oda kodu</label>
+              <input class="input code" id="codeInput" placeholder="K7M-4QX" maxlength="8" autocapitalize="characters" spellcheck="false" enterkeyhint="go">
+              <button class="btn primary" type="submit">Katıl</button>
             </form>
-            <p class="hint">Farklı evlerdeyseniz Tailscale adresini yazın, örneğin <span class="mono">100.101.102.103:8787</span>.</p>
             <p class="err" id="joinErr" hidden></p>
+            <details class="more" id="moreWays">
+              <summary>Aynı Wi-Fi'da mısınız? Diğer yollar</summary>
+              <div class="found" id="foundList"></div>
+              <div class="scan" id="scanNote"><span class="pulse"></span><span>Aynı ağdaki odalar aranıyor…</span></div>
+              <form class="row" id="joinForm" autocomplete="off">
+                <label class="sr" for="addrInput">Oda adresi</label>
+                <input class="input mono" id="addrInput" placeholder="192.168.1.20:8787" inputmode="url" autocapitalize="off" spellcheck="false">
+                <button class="btn" type="submit">Bağlan</button>
+              </form>
+            </details>
           </div>
         </div>
       </section>
@@ -114,7 +120,7 @@
           <div class="tear">
             <div id="tkAddrs"></div>
             <div class="actions">
-              <button class="btn sm" id="shareBtn"><svg class="i"><use href="#i-share"/></svg>Adresi gönder</button>
+              <button class="btn sm primary" id="shareBtn"><svg class="i"><use href="#i-share"/></svg>Kodu gönder</button>
               <button class="btn sm" id="leaveBtn"><svg class="i"><use href="#i-exit"/></svg><span id="leaveTxt">Ayrıl</span></button>
             </div>
           </div>
@@ -155,6 +161,10 @@
           <div class="row"><input class="input" id="passInput" type="password" placeholder="Sunucuda şifre yoksa boş bırak"><button class="btn" type="submit">Kaydet</button></div>
           <span class="hint" data-app-only>Odayı bu cihazda açarken de bu şifre kullanılır.</span>
         </form>
+        <div class="field" data-app-only>
+          <label>Oda kodu</label>
+          <div class="row"><span class="hint" id="codeHint" style="flex:1;align-self:center">Odayı ilk açtığında oluşur ve hep aynı kalır.</span><button class="btn" type="button" id="newCodeBtn">Yeni kod al</button></div>
+        </div>
       </section>
     </div>
 

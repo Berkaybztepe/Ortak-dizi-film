@@ -5,7 +5,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { ROOT, loadPlaywright, chromeOptions, testVideo, routeFakeDisney, startServer, reporter, sleep } from './helpers.mjs';
+import { ROOT, loadPlaywright, chromeOptions, testVideo, routeFakeDisney, startServer, startBroker, TEST_CODE, reporter, sleep } from './helpers.mjs';
 
 const { chromium } = await loadPlaywright();
 const VIDEO = testVideo();
@@ -25,7 +25,9 @@ const BOOT = `(function(){ if (window.top !== window) return;\n${ENGINE}\n})();
 })();`;
 
 const PORT = 8798;
-const srv = await startServer(PORT);
+const broker = await startBroker(18850, 18851);
+const srv = await startServer(PORT, { ODA_KODU: TEST_CODE, ARACI: broker.ws });
+await sleep(800);
 const browser = await chromium.launch(chromeOptions({ args: ['--no-proxy-server', '--autoplay-policy=no-user-gesture-required'] }));
 
 const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing']);
@@ -56,6 +58,7 @@ async function app(label, w, h) {
       await ui.evaluate(() => OI.setLayout({ mode: 'full' }));
     }
   });
+  await ui.addInitScript((url) => (window.__ortakIzleBrokers = [url]), broker.ws);
   await ui.addInitScript(() => {
     const fns = ['openPlayer', 'closePlayer', 'toPlayer', 'setPanel', 'setFloatSize', 'setDesktopMode', 'keepScreenOn', 'share', 'startDiscovery', 'stopDiscovery', 'stopHost'];
     window.OrtakNative = { getInfo: () => JSON.stringify({ hosting: false, port: -1, addresses: [] }), startHost: () => JSON.stringify({ ok: false, error: 'test' }) };
@@ -76,14 +79,16 @@ try {
   for (const X of [A, B]) {
     await X.ui.fill('#nameInput', X.label);
     await X.ui.click('#nameForm button');
-    await X.ui.fill('#addrInput', `127.0.0.1:${PORT}`);
-    await X.ui.click('#joinForm button');
+    await X.ui.fill('#codeInput', 'k7m4qx');
+    await X.ui.click('#codeForm button');
   }
-  await sleep(1200);
+  await sleep(4000);
   const chipA = await A.ui.locator('#connText').innerText();
-  /Bağlı · 2 kişi/.test(chipA) ? pass('İkisi de salona bağlandı: ' + chipA) : fail('Bağlantı: ' + chipA);
+  /Bağlı · 2 kişi/.test(chipA) ? pass('İkisi de oda koduyla bağlandı: ' + chipA) : fail('Bağlantı: ' + chipA);
   const seats = await A.ui.locator('#tkSeats').innerText();
-  /Kardeş/.test(seats) ? pass('Bilette iki koltuk görünüyor') : fail('Bilet: ' + seats);
+  /Kardeş/.test(seats) ? pass('Oda kartında iki kişi görünüyor') : fail('Oda kartı: ' + seats);
+  const codeShown = await A.ui.locator('#tkAddrs').innerText();
+  /K7M-4QX/.test(codeShown) ? pass('Oda kartında kod görünüyor: K7M-4QX') : fail('Kod görünmüyor: ' + codeShown);
   await A.ui.screenshot({ path: `${SHOTS}/sim-lobby-A.png` });
 
   // A Disney+ açıp bölüme girer
@@ -139,6 +144,7 @@ try {
 } finally {
   srv.kill();
   await browser.close();
+  await broker.close();
 }
 console.log(R.failed ? `BAŞARISIZ (${R.failed})` : 'Uygulama benzetim testi geçti ✔');
 process.exit(R.failed ? 1 : 0);
