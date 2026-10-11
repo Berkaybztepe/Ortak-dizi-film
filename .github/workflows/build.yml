@@ -49,6 +49,8 @@ jobs:
       - name: Derle
         working-directory: android
         run: ./gradlew --no-daemon :core:test :core:installDist :app:assembleRelease
+      - name: Eski Android sürümleriyle uyumluluk (API 26)
+        run: python3 tools/api-check.py android/core/build/classes/kotlin/main android/app/build/tmp/kotlin-classes/release
       - name: Kotlin sunucusunu Node testleriyle dene
         run: |
           ODA_SIFRE=gizli PORT=8790 ASSETS_DIR="$PWD/web" android/core/build/install/ortak-izle-sunucu/bin/ortak-izle-sunucu &

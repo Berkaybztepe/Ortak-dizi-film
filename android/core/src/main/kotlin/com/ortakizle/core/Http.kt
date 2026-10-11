@@ -37,7 +37,8 @@ fun readHttpRequest(input: InputStream): HttpRequest? {
         tail = (tail shl 8) or b
         if (tail == 0x0D0A0D0A || (tail and 0xFFFF) == 0x0A0A) break
     }
-    val lines = buf.toString(Charsets.ISO_8859_1).split("\r\n", "\n").filter { it.isNotEmpty() }
+    // ByteArrayOutputStream.toString(Charset) Android 13 öncesinde yok
+    val lines = String(buf.toByteArray(), Charsets.ISO_8859_1).split("\r\n", "\n").filter { it.isNotEmpty() }
     val parts = lines.firstOrNull()?.split(' ')?.filter { it.isNotEmpty() } ?: throw HttpBadRequest("boş istek")
     if (parts.size != 3 || !parts[2].startsWith("HTTP/")) throw HttpBadRequest("bozuk istek satırı")
     val headers = LinkedHashMap<String, String>()
