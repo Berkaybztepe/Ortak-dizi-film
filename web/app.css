@@ -377,3 +377,14 @@ body.float .toast { width: 320px; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition: none !important; } }
 .watch .chat-head { display: none; }
+
+/* Eski WebView'lar için yedek boşluklar (flex gap yoksa) */
+.no-flex-gap .ticket .meta div { margin-right: 22px; }
+.no-flex-gap .seat > * + *, .no-flex-gap .sync .who span > * + *, .no-flex-gap .chip > * + * { margin-left: 7px; }
+.no-flex-gap .sync .who span, .no-flex-gap .ticket .seats > *, .no-flex-gap .tools .btn { margin-right: 12px; }
+.no-flex-gap .msg .meta b { margin-right: 8px; }
+.no-flex-gap .btn > * + *, .no-flex-gap .toast > * + *, .no-flex-gap .row > * + *, .no-flex-gap .composer > * + * { margin-left: 8px; }
+.no-flex-gap .wordmark .logo { margin-right: 10px; }
+.no-flex-gap .ticket .actions > *, .no-flex-gap .choice .actions > * { margin-right: 8px; }
+.no-flex-gap .section > * + *, .no-flex-gap .choice > * + *, .no-flex-gap .lobby .main > * + *, .no-flex-gap .ticket .stub > * + *,
+.no-flex-gap .ticket .tear > * + *, .no-flex-gap #tkAddrs > * + *, .no-flex-gap .codeform > * + *, .no-flex-gap .steps > * + * { margin-top: 14px; }

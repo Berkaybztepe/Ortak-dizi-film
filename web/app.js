@@ -15,6 +15,16 @@
     };
   }
 
+  // Eski WebView'lar (Chrome 84 öncesi) flex "gap" desteklemiyor: yedek boşluklar için işaretle
+  (function () {
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex;flex-direction:column;row-gap:1px;position:absolute;visibility:hidden';
+    d.append(document.createElement('div'), document.createElement('div'));
+    document.documentElement.append(d);
+    if (d.scrollHeight !== 1) document.documentElement.classList.add('no-flex-gap');
+    d.remove();
+  })();
+
   const { RoomClient, displayAddress, isCode, normalizeCode, formatCode, newCode } = window.OrtakIzleRoom;
   const params = new URLSearchParams(location.search);
   const DEMO = params.get('demo');
