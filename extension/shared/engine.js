@@ -108,13 +108,13 @@
   function createStage(fontFamily) {
     const host = document.createElement('div');
     host.setAttribute('data-ortak-izle', 'stage');
-    host.style.cssText = 'all:initial;position:fixed;inset:0;z-index:2147483646;pointer-events:none;';
+    host.style.cssText = 'all:initial;position:fixed;top:0;right:0;bottom:0;left:0;z-index:2147483646;pointer-events:none;';
     const root = host.attachShadow({ mode: 'open' });
     const display = `${fontFamily ? `'${fontFamily}',` : ''}system-ui,-apple-system,'Segoe UI',Roboto,sans-serif`;
     root.innerHTML = `
       <style>
         :host { --paper:#ffffff; --ink:#160803; --brass:#ff6b3d; }
-        .center { position:absolute; inset:0; display:grid; place-items:center; }
+        .center { position:absolute; top:0; right:0; bottom:0; left:0; display:grid; place-items:center; }
         .count { font:800 clamp(120px, 28vmin, 260px)/1 ${display}; color:var(--paper);
           text-shadow:0 4px 24px rgba(0,0,0,.7); font-variant-numeric:tabular-nums; letter-spacing:.02em;
           width:1.6em; height:1.6em; display:grid; place-items:center; border-radius:50%;

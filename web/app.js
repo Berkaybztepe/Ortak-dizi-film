@@ -7,6 +7,14 @@
 (function () {
   'use strict';
 
+  // Eski Android WebView'lar (Chrome 86 öncesi) için
+  if (!Element.prototype.replaceChildren) {
+    Element.prototype.replaceChildren = function (...nodes) {
+      while (this.firstChild) this.removeChild(this.firstChild);
+      this.append(...nodes);
+    };
+  }
+
   const { RoomClient, displayAddress, isCode, normalizeCode, formatCode, newCode } = window.OrtakIzleRoom;
   const params = new URLSearchParams(location.search);
   const DEMO = params.get('demo');
@@ -982,6 +990,14 @@
     if (ENV === 'web') {
       connectTo(location.host);
       return;
+    }
+    // Sistem tarayıcısı (Android System WebView) çok eskiyse uyar: dizi siteleri açılmayabilir
+    const chromeMajor = +((navigator.userAgent.match(/Chrome\/(\d+)/) || [])[1] || 0);
+    if (chromeMajor && chromeMajor < 100) {
+      toast(
+        [h('b', null, 'Android System WebView eski'), h('span', { class: 'q' }, `Sürüm ${chromeMajor}. Play Store'dan güncelle, yoksa diziler açılmayabilir.`)],
+        { action: { label: 'Tamam', run: () => {} }, ms: 30000 }
+      );
     }
     // Android: oda bu cihazda açıksa ona, değilse son sunucuya bağlan
     const info = native.json('getInfo');

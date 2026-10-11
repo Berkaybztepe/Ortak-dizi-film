@@ -122,9 +122,9 @@ svg.i { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none;
   border-radius: 999px; font-size: var(--t-xs); font-weight: 700; background: var(--surface-2);
   color: var(--text-dim); white-space: nowrap; }
 .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.chip.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
-.chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
-.chip.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 13%, transparent); }
+.chip.ok { color: var(--ok); background: rgba(61, 220, 132, .13); }
+.chip.warn { color: var(--warn); background: rgba(255, 194, 71, .13); }
+.chip.bad { color: var(--bad); background: rgba(255, 77, 94, .13); }
 
 .avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none;
   font: 800 14px/1 var(--sans); color: #0b0b0c; background: var(--pc, var(--p0)); position: relative; }

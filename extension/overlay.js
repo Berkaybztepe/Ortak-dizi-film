@@ -113,6 +113,14 @@
   }
   const clock = (ms) => new Date(ms).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
+  // Eski Android WebView'lar (Chrome 86 öncesi) için
+  if (!Element.prototype.replaceChildren) {
+    Element.prototype.replaceChildren = function (...nodes) {
+      while (this.firstChild) this.removeChild(this.firstChild);
+      this.append(...nodes);
+    };
+  }
+
   function create(opts) {
     const send = opts.send;
     const command = opts.command;
