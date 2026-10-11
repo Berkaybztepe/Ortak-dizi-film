@@ -88,6 +88,15 @@ function client(port) {
   assert.strictEqual((await b.next((m) => m.t === 'chat' && !m.system)).text, 'selam');
   assert.strictEqual((await a.next((m) => m.t === 'chat' && !m.system)).text, 'selam');
 
+  // Aynı kimlikle tekrar gönderilen sohbet mesajı çoğalmaz, yalnızca gönderene tekrar bildirilir
+  const cid = 'c' + Math.random().toString(36).slice(2, 10);
+  a.send({ t: 'chat', text: 'tekrar', cid });
+  assert.strictEqual((await b.next((m) => m.t === 'chat' && m.cid === cid)).text, 'tekrar');
+  await a.next((m) => m.t === 'chat' && m.cid === cid);
+  a.send({ t: 'chat', text: 'tekrar', cid });
+  const again = await b.next((m) => m.t === 'chat' && m.cid === cid);
+  assert.strictEqual(again.at, (await a.next((m) => m.t === 'chat' && m.cid === cid)).at); // aynı mesaj, yeni değil
+
   // Hangi sayfada olduğu
   a.send({ t: 'nav', url: 'https://www.disneyplus.com/play/abc', title: 'Loki', platform: 'Disney+', watching: true });
   const nav = await b.next((m) => m.t === 'nav');
@@ -100,6 +109,14 @@ function client(port) {
   assert.deepStrictEqual([s.action, s.paused, s.time, s.name], ['pause', true, 61.5, 'Berkay']);
   assert.strictEqual(s.url, 'https://www.disneyplus.com/play/abc');
   await a.none((m) => m.t === 'sync');
+
+  // Güvenli mod: rel bayrağı ve sarma miktarı (delta, eksi olabilir) iletilir
+  a.send({ t: 'sync', action: 'seek', time: 5, paused: true, rel: true, delta: -10 });
+  const rs = await b.next((m) => m.t === 'sync' && m.action === 'seek');
+  assert.deepStrictEqual([rs.rel, rs.delta], [true, -10]);
+  a.send({ t: 'sync', action: 'pause', time: 61.5 });
+  const nr = await b.next((m) => m.t === 'sync' && m.action === 'pause');
+  assert.strictEqual(nr.rel, undefined);
 
   // Konum bildirimi sadece son kumanda edenden kabul edilir
   b.send({ t: 'tick', time: 10, paused: false });
@@ -168,6 +185,16 @@ function client(port) {
   assert.strictEqual(long.text.length, 1000);
   const play = await b.next((m) => m.t === 'sync' && m.name === 'Üçüncü');
   assert.strictEqual(play.time, 0);
+
+  // Sohbet sıra numarası: pong son numarayı söyler, "resend" kaçanları yeniden yollar
+  assert.ok(long.seq > 1);
+  c.send({ t: 'ping', c: 1 });
+  assert.strictEqual((await c.next((m) => m.t === 'pong')).cs, long.seq);
+  c.send({ t: 'resend', after: long.seq - 2 });
+  const r1 = await c.next((m) => m.t === 'chat' && m.seq === long.seq - 1);
+  const r2 = await c.next((m) => m.t === 'chat' && m.seq === long.seq);
+  assert.strictEqual(r2.text, long.text);
+  assert.ok(r1.seq < r2.seq);
 
   b.close();
   c.close();

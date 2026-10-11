@@ -412,9 +412,19 @@
       this.bestRtt = Infinity;
       let opened = false;
 
+      let lastRx = Date.now();
       ws.onopen = () => {
         opened = true;
         this.retry = 0;
+        // Odaya katılma cevabı (welcome) yolda kaybolursa takılı kalma: yeniden bağlan
+        clearTimeout(this.joinTimer);
+        this.joinTimer = setTimeout(() => {
+          if (this.ws === ws && !this.me) {
+            try {
+              ws.close();
+            } catch {}
+          }
+        }, 10000);
         this.send({
           t: 'join',
           name: this.config.name,
@@ -425,11 +435,22 @@
         this._ping();
         setTimeout(() => this._ping(), 1500);
         clearInterval(this.pingTimer);
-        // 15 sn'de bir: saat farkını tazeler, servis çalışanını uyanık tutar
-        this.pingTimer = setInterval(() => this._ping(), 15000);
+        // 6 sn'de bir: saat farkını tazeler, kaçan sohbet mesajını fark ettirir,
+        // servis çalışanını uyanık tutar.
+        // 45 sn'dir hiçbir şey gelmediyse bağlantı ölmüştür: kapatıp yeniden bağlan
+        this.pingTimer = setInterval(() => {
+          if (Date.now() - lastRx > 45000) {
+            try {
+              ws.close();
+            } catch {}
+            return;
+          }
+          this._ping();
+        }, 6000);
       };
 
       ws.onmessage = (e) => {
+        lastRx = Date.now();
         let m;
         try {
           m = JSON.parse(e.data);
@@ -441,6 +462,8 @@
 
       ws.onclose = () => {
         clearInterval(this.pingTimer);
+        clearTimeout(this.joinTimer);
+        if (this.ws !== ws) return; // eski bağlantı
         this.ws = null;
         const wasJoined = !!this.me;
         this.members = [];
@@ -459,11 +482,45 @@
       };
     }
 
+    _trackChat(obj) {
+      this.pendingChats = this.pendingChats || new Map();
+      const entry = { obj, tries: 0 };
+      this.pendingChats.set(obj.cid, entry);
+      const again = () => {
+        if (!this.pendingChats.has(obj.cid)) return;
+        if (entry.tries++ >= 5) {
+          this.pendingChats.delete(obj.cid);
+          this.onEvent({ t: 'chat-failed', text: obj.text });
+          return;
+        }
+        if (this.ws && this.ws.readyState === 1 && this.me) this.ws.send(JSON.stringify(obj));
+        entry.timer = setTimeout(again, 3000);
+      };
+      entry.timer = setTimeout(again, 3000);
+    }
+
+    // Kaçırılan sohbet mesajlarını iste (en fazla 3 sn'de bir)
+    _resend() {
+      if (Date.now() - (this.lastResend || 0) < 3000) return;
+      this.lastResend = Date.now();
+      const have = this.history.reduce((a, h) => Math.max(a, h.seq || 0), 0);
+      // Geçmişteki en eski boşluğun öncesinden iste
+      let after = have;
+      const seqs = this.history.map((h) => h.seq).filter(Boolean).sort((a, b) => a - b);
+      for (let k = 1; k < seqs.length; k++) if (seqs[k] !== seqs[k - 1] + 1) { after = seqs[k - 1]; break; }
+      this.send({ t: 'resend', after });
+    }
+
     _ping() {
       this.send({ t: 'ping', c: Date.now() });
     }
 
     send(obj) {
+      // Sohbet mesajları ulaşana kadar (sunucu herkese, gönderene de yollar) 3 sn arayla tekrar denenir
+      if (obj && obj.t === 'chat' && !obj.cid) {
+        obj = { ...obj, cid: Math.random().toString(36).slice(2, 12) };
+        this._trackChat(obj);
+      }
       if (this.ws && this.ws.readyState === 1) {
         this.ws.send(JSON.stringify(obj));
         if (this.me) this._local(obj);
@@ -519,6 +576,8 @@
     }
 
     _handle(m) {
+      // Sunucuda bizim görmediğimiz sohbet mesajı var mı? (pong ve tick söyler)
+      if (this.me && typeof m.cs === 'number' && m.cs > (this.lastSeq || 0)) this._resend();
       switch (m.t) {
         case 'pong': {
           const now = Date.now();
@@ -533,12 +592,14 @@
           return;
         }
         case 'welcome':
+          clearTimeout(this.joinTimer);
           this.me = m.you;
           this.roomName = m.room;
           this.serverName = m.server || null;
           this.members = m.members || [];
           this.roomState = m.state || null;
           this.history = m.history || [];
+          this.lastSeq = this.history.reduce((a, h) => Math.max(a, h.seq || 0), 0);
           this.typing = {};
           this.state = 'bağlı';
           this.error = '';
@@ -567,6 +628,27 @@
           this._upsert(m.member);
           break;
         case 'chat':
+          if (m.cid && this.pendingChats && this.pendingChats.has(m.cid)) {
+            clearTimeout(this.pendingChats.get(m.cid).timer);
+            this.pendingChats.delete(m.cid);
+          }
+          // Tekrar iletilen mesajı ikinci kez gösterme
+          if (m.cid && this.history.some((h) => h.cid === m.cid)) return;
+          if (m.seq && this.history.some((h) => h.seq === m.seq)) return;
+          if (m.seq) {
+            const last = this.lastSeq || 0;
+            if (m.seq > last + 1) this._resend(); // arada kaçırdığımız var
+            this.lastSeq = Math.max(last, m.seq);
+            // Geç gelen (yeniden istenen) mesajı sırasına yerleştir
+            const i = this.history.findIndex((h) => h.seq && h.seq > m.seq);
+            if (i >= 0) {
+              this.history.splice(i, 0, m);
+              m = { ...m, late: true };
+              if (this.history.length > HISTORY) this.history.shift();
+              if (m.from) delete this.typing[m.from];
+              break;
+            }
+          }
           this.history.push(m);
           if (this.history.length > HISTORY) this.history.shift();
           if (m.from) delete this.typing[m.from];

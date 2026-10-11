@@ -179,7 +179,7 @@
       e.preventDefault();
       const text = els.input.value.trim();
       if (!text) return;
-      if (!client.send({ t: 'chat', text })) return toast('Mesaj gönderilemedi: bağlantı yok.');
+      if (!client.send({ t: 'chat', text })) toast('Bağlantı bekleniyor; bağlanınca gönderilecek.');
       els.input.value = '';
       typingSent = 0;
     });
@@ -343,6 +343,9 @@
         break;
       case 'typing':
         renderTyping();
+        break;
+      case 'chat-failed':
+        toast([h('b', null, 'Mesaj gönderilemedi'), h('span', { class: 'q' }, m.text)]);
         break;
       case 'member-join':
         toast(`${m.member.name} odaya katıldı.`);
@@ -763,9 +766,10 @@
     $('wPlatform').textContent = e?.platform || 'Oynatıcı';
     $('wTitle').textContent = e?.title || (e?.watching ? 'Bölüm' : 'Bir bölüm seç');
     const st = client.roomState;
-    const tc = e?.hasVideo ? e.time : st ? client.expectedTime(st) : 0;
-    $('wTc').firstChild.textContent = fmt(tc);
-    $('wDur').textContent = e?.hasVideo && e.duration ? `/ ${fmt(e.duration)}` : '';
+    // e.time null: bu platformda bölümün gerçek dakikası okunamadı
+    const tc = e?.hasVideo ? e.time : st && !st.rel ? client.expectedTime(st) : 0;
+    $('wTc').firstChild.textContent = tc === null ? '–:––' : fmt(tc);
+    $('wDur').textContent = e?.hasVideo && e.duration && tc !== null ? `/ ${fmt(e.duration)}` : '';
 
     const others = client.members.filter((m) => m.id !== meId);
     const waiting = others.filter((m) => m.buffering);
@@ -789,6 +793,9 @@
     } else if (st && st.url && e.url && !sameContent(st.url, e.url)) {
       cls = 'warn';
       txt = 'Farklı bölümdesiniz';
+    } else if (e.time === null || st?.rel) {
+      cls = 'ok';
+      txt = e.paused ? 'Senkron · duraklatıldı' : 'Senkron';
     } else {
       const drift = st ? Math.abs(client.expectedTime(st) - e.time) : 0;
       cls = drift > 2.5 && !e.paused ? 'warn' : 'ok';

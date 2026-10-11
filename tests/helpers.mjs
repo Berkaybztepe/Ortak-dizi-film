@@ -25,12 +25,12 @@ export function chromeOptions(extra = {}) {
   return { ...(exe ? { executablePath: exe } : {}), ...extra };
 }
 
-// 2 dakikalık küçük bir deneme videosu (ffmpeg ile bir kez üretilir)
-export function testVideo() {
-  const file = path.join(os.tmpdir(), 'ortak-izle-test.webm');
+// Deneme videosu (ffmpeg ile bir kez üretilir). Varsayılan 2 dk; uzun: 12 dk
+export function testVideo(seconds = 120) {
+  const file = path.join(os.tmpdir(), `ortak-izle-test-${seconds}.webm`);
   if (!fs.existsSync(file)) {
     execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=10',
-      '-t', '120', '-c:v', 'libvpx', '-b:v', '150k', '-g', '10', file]);
+      '-t', String(seconds), '-c:v', 'libvpx', '-b:v', seconds > 200 ? '60k' : '150k', '-g', '20', file]);
   }
   return fs.readFileSync(file);
 }
@@ -42,6 +42,33 @@ export const fakePage = (title) => `<!doctype html><html><head><title>Watch ${ti
 const sr = document.getElementById('p').attachShadow({mode:'open'});
 sr.innerHTML = '<video id="v" src="https://www.disneyplus.com/media/v.webm" muted style="width:100vw;height:100vh"></video>';
 window.v = sr.getElementById('v');
+// Zor koşul testi: window.__resist > 0 iken oynatıcı, dışarıdan yapılan durdur/oynat'ı bir kez geri alır
+// (bazı platform oynatıcılarının kendi durumunu dayatması gibi)
+window.__resist = 0;
+// Disney+ benzeri zaman çizelgesi (adres parametreleri):
+//   ?offset=N    : video zamanı içerik dakikası değil; gerçek dakika = video zamanı + N, yalnızca
+//                  oynatıcının ilerleme çubuğunda (role=slider, aria-valuenow) yazar
+//   ?unreliable=1: video süresi sonsuz görünür ve çubuk yok (gerçek dakika hiç okunamaz)
+const q = new URLSearchParams(location.search);
+if (q.has('offset') || q.has('unreliable')) {
+  Object.defineProperty(v, 'duration', { get: () => Infinity });
+}
+if (q.has('offset')) {
+  const off = +q.get('offset');
+  const bar = document.createElement('div');
+  bar.setAttribute('role', 'slider');
+  bar.setAttribute('aria-valuemin', '0');
+  bar.setAttribute('aria-valuemax', '2700');
+  bar.style.cssText = 'position:fixed;left:5%;right:5%;bottom:20px;height:6px;background:#888';
+  sr.appendChild(bar);
+  setInterval(() => bar.setAttribute('aria-valuenow', String(Math.floor(v.currentTime + off))), 250);
+}
+for (const ev of ['pause', 'play']) v.addEventListener(ev, () => {
+  if (window.__resist > 0) {
+    window.__resist--;
+    setTimeout(() => (ev === 'pause' ? v.play() : v.pause()), 250);
+  }
+});
 </script></body></html>`;
 
 export async function routeFakeDisney(ctx, video) {
@@ -58,7 +85,7 @@ export async function routeFakeDisney(ctx, video) {
       }
       return route.fulfill({ status: 200, headers: { 'content-type': 'video/webm', 'accept-ranges': 'bytes' }, body: video });
     }
-    return route.fulfill({ status: 200, contentType: 'text/html', body: fakePage(u.includes('loki') ? 'Loki' : 'Ana sayfa') });
+    return route.fulfill({ status: 200, contentType: 'text/html', body: fakePage(/loki/.test(u) ? 'Loki' : 'Ana sayfa') });
   });
 }
 

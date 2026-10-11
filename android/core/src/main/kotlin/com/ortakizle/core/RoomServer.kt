@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -480,6 +481,8 @@ class RoomServer(
         val at: Long,
         val url: String?,
         var by: String?,
+        // true: gönderenin zamanı içeriğin gerçek dakikası değil (ör. Disney+), konuma atlanmaz
+        val rel: Boolean = false,
     ) {
         fun putInto(b: JsonObjectBuilder) {
             b.put("paused", paused)
@@ -487,6 +490,7 @@ class RoomServer(
             b.put("at", at)
             b.put("url", url)
             b.put("by", by)
+            if (rel) b.put("rel", true)
         }
 
         fun toJson(): JsonObject = buildJsonObject { putInto(this) }
@@ -495,6 +499,7 @@ class RoomServer(
     private class Room(val name: String) {
         val clients = LinkedHashSet<Client>()
         val history = ArrayList<JsonObject>()
+        var seq = 0L // sohbet sıra numarası
         var state = PlayState(true, 0.0, System.currentTimeMillis(), null, null)
     }
 
@@ -533,9 +538,13 @@ class RoomServer(
         }
     }
 
-    private fun pushHistory(room: Room, msg: JsonObject) {
-        room.history.add(msg)
+    // Sohbet mesajına sıra numarası ekleyip geçmişe yazar; numaralı halini döndürür
+    private fun pushHistory(room: Room, msg: JsonObject): JsonObject {
+        room.seq++
+        val numbered = JsonObject(msg + ("seq" to JsonPrimitive(room.seq)))
+        room.history.add(numbered)
         if (room.history.size > MAX_HISTORY) room.history.removeAt(0)
+        return numbered
     }
 
     private fun addSystemMessage(room: Room, text: String) {
@@ -545,8 +554,7 @@ class RoomServer(
             put("text", text)
             put("at", System.currentTimeMillis())
         }
-        pushHistory(room, msg)
-        broadcast(room, msg)
+        broadcast(room, pushHistory(room, msg))
     }
 
     private fun error(client: Client, code: String, message: String) {
@@ -578,6 +586,7 @@ class RoomServer(
                 put("t", "pong")
                 m["c"]?.let { put("c", it) }
                 put("s", System.currentTimeMillis())
+                client.room?.let { put("cs", it.seq) } // son sohbet sıra numarası
             })
             return
         }
@@ -624,15 +633,34 @@ class RoomServer(
             "chat" -> {
                 val text = jsTrim(cleanStr(m["text"], MAX_TEXT))
                 if (text.isEmpty()) return
+                val cid = cleanStr(m["cid"], 20)
+                if (cid.isNotEmpty()) {
+                    // Aynı mesaj (bağlantı sorunu yüzünden) tekrar geldiyse çoğaltma; herkese yeniden ilet
+                    // (ilk iletim birine ulaşmamış olabilir, istemciler kimliğe bakıp tekrarı göstermez)
+                    val dup = room.history.firstOrNull { (it["cid"] as? JsonPrimitive)?.contentOrNull == cid }
+                    if (dup != null) {
+                        broadcast(room, dup)
+                        return
+                    }
+                }
                 val msg = buildJsonObject {
                     put("t", "chat")
                     put("from", client.id)
                     put("name", client.name)
                     put("text", text)
                     put("at", System.currentTimeMillis())
+                    if (cid.isNotEmpty()) put("cid", cid)
                 }
-                pushHistory(room, msg)
-                broadcast(room, msg)
+                broadcast(room, pushHistory(room, msg))
+            }
+
+            // İstemci arada kaçırdığı sohbet mesajlarını istiyor
+            "resend" -> {
+                val after = cleanNum(m["after"])
+                for (h in room.history) {
+                    val seq = (h["seq"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull() ?: continue
+                    if (seq > after) client.peer.send(h)
+                }
             }
 
             // Kullanıcı eliyle oynat / durdur / sar yaptı
@@ -648,11 +676,14 @@ class RoomServer(
                     at = System.currentTimeMillis(),
                     url = client.url,
                     by = client.id,
+                    rel = truthy(m["rel"]),
                 )
+                val delta = jsNumber(m["delta"])?.takeIf { it.isFinite() && kotlin.math.abs(it) <= 86400 }
                 broadcast(room, buildJsonObject {
                     put("t", "sync")
                     put("action", action)
                     room.state.putInto(this)
+                    if (action == "seek" && delta != null) put("delta", numJson(delta))
                     put("from", client.id)
                     put("name", client.name)
                 }, client)
@@ -663,11 +694,12 @@ class RoomServer(
                 // Sadece son kumanda eden kişinin tick'i durumu belirler
                 val by = room.state.by
                 if (!by.isNullOrEmpty() && by != client.id) return
-                room.state = PlayState(truthy(m["paused"]), cleanNum(m["time"]), System.currentTimeMillis(), client.url, client.id)
+                room.state = PlayState(truthy(m["paused"]), cleanNum(m["time"]), System.currentTimeMillis(), client.url, client.id, truthy(m["rel"]))
                 broadcast(room, buildJsonObject {
                     put("t", "tick")
                     room.state.putInto(this)
                     put("from", client.id)
+                    put("cs", room.seq)
                 }, client)
             }
 
@@ -732,11 +764,13 @@ class RoomServer(
             "countdown" -> {
                 val at = System.currentTimeMillis() + COUNTDOWN_MS
                 val time = cleanNum(m["time"])
-                room.state = PlayState(false, time, at, client.url, client.id)
+                val rel = truthy(m["rel"])
+                room.state = PlayState(false, time, at, client.url, client.id, rel)
                 broadcast(room, buildJsonObject {
                     put("t", "countdown")
                     put("at", at)
                     put("time", numJson(time))
+                    if (rel) put("rel", true)
                     put("url", client.url)
                     put("from", client.id)
                     put("name", client.name)

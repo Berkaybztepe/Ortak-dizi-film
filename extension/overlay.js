@@ -300,8 +300,9 @@
       const st = status.room.state;
       const offset = status.clockOffset || 0;
       const exp = st ? (st.paused ? st.time : st.time + Math.max(0, Date.now() + offset - st.at) / 1000) : 0;
-      els.tc.firstChild.textContent = fmt(engine?.hasVideo ? engine.time : exp);
-      els.tc.lastChild.textContent = engine?.hasVideo && engine.duration ? `/ ${fmt(engine.duration)}` : '';
+      const tcv = engine?.hasVideo ? engine.time : st && st.rel ? null : exp;
+      els.tc.firstChild.textContent = tcv === null ? '–:––' : fmt(tcv);
+      els.tc.lastChild.textContent = engine?.hasVideo && engine.duration && tcv !== null ? `/ ${fmt(engine.duration)}` : '';
       const others = members().filter((m) => m.id !== me().id);
       const waiting = others.find((m) => m.buffering);
       let cls = 'ok';
@@ -311,6 +312,7 @@
       else if (waiting) [cls, txt] = ['warn', `${waiting.name} yükleniyor`];
       else if (!others.length) [cls, txt] = ['', 'Odada yalnızsın'];
       else if (st && st.url && !sameContent(st.url, location.href)) [cls, txt] = ['warn', 'Farklı bölümdesiniz'];
+      else if (engine.time === null || st?.rel) txt = engine.paused ? 'Senkron · duraklatıldı' : 'Senkron';
       else {
         const drift = st ? Math.abs(exp - engine.time) : 0;
         if (drift > 2.5 && !engine.paused) [cls, txt] = ['warn', `${drift.toFixed(0)} sn fark`];
@@ -407,9 +409,17 @@
           if (status) {
             const h = status.room.history;
             const prev = h[h.length - 1];
-            h.push(m);
-            if (h.length > 100) h.shift();
-            appendMsg(m, prev);
+            const i = m.late && m.seq ? h.findIndex((x) => x.seq && x.seq > m.seq) : -1;
+            if (i >= 0) {
+              // Geç gelen mesajı sırasına koy ve listeyi yeniden çiz
+              h.splice(i, 0, m);
+              if (h.length > 100) h.shift();
+              renderHistory();
+            } else {
+              h.push(m);
+              if (h.length > 100) h.shift();
+              appendMsg(m, prev);
+            }
           }
           if (m.from) delete typing[m.from];
           if (!open && m.from && m.from !== me()?.id) {

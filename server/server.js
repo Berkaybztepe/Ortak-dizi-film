@@ -201,8 +201,18 @@ function cleanUrl(v) {
   }
 }
 
+// Sohbet mesajlarına sıra numarası: istemci arada kaçırdığını fark edip yeniden isteyebilsin
+function pushChat(room, msg) {
+  room.seq = (room.seq || 0) + 1;
+  msg.seq = room.seq;
+  room.history.push(msg);
+  if (room.history.length > MAX_HISTORY) room.history.shift();
+}
+
 function addSystemMessage(room, text) {
   const msg = { t: 'chat', system: true, text, at: Date.now() };
+  room.seq = (room.seq || 0) + 1;
+  msg.seq = room.seq;
   room.history.push(msg);
   if (room.history.length > MAX_HISTORY) room.history.shift();
   broadcast(room, msg);
@@ -219,7 +229,9 @@ function handle(client, raw) {
 
   // Saat eşitleme her zaman serbest
   if (m.t === 'ping') {
-    client.ws.send({ t: 'pong', c: m.c, s: Date.now() });
+    const pong = { t: 'pong', c: m.c, s: Date.now() };
+    if (client.room) pong.cs = client.room.seq || 0; // son sohbet sıra numarası
+    client.ws.send(pong);
     return;
   }
 
@@ -261,9 +273,16 @@ function handle(client, raw) {
     case 'chat': {
       const text = cleanStr(m.text, MAX_TEXT).trim();
       if (!text) return;
+      const cid = cleanStr(m.cid, 20);
+      if (cid) {
+        // Aynı mesaj (bağlantı sorunu yüzünden) tekrar geldiyse çoğaltma; herkese yeniden ilet
+        // (ilk iletim birine ulaşmamış olabilir, istemciler kimliğe bakıp tekrarı gösterme)
+        const dup = room.history.find((h) => h.cid === cid);
+        if (dup) return broadcast(room, dup);
+      }
       const msg = { t: 'chat', from: client.id, name: client.name, text, at: Date.now() };
-      room.history.push(msg);
-      if (room.history.length > MAX_HISTORY) room.history.shift();
+      if (cid) msg.cid = cid;
+      pushChat(room, msg);
       broadcast(room, msg);
       return;
     }
@@ -280,7 +299,12 @@ function handle(client, raw) {
         url: client.url,
         by: client.id,
       };
-      broadcast(room, { t: 'sync', action, ...room.state, from: client.id, name: client.name }, client);
+      // rel: gönderenin zamanı içeriğin gerçek dakikası değil (ör. Disney+): konuma atlanmaz
+      if (m.rel) room.state.rel = true;
+      const msg = { t: 'sync', action, ...room.state, from: client.id, name: client.name };
+      // delta: sarma miktarı (sn), güvenli modda karşı taraf aynı miktarda sarar
+      if (action === 'seek' && typeof m.delta === 'number' && Number.isFinite(m.delta) && Math.abs(m.delta) <= 86400) msg.delta = m.delta;
+      broadcast(room, msg, client);
       return;
     }
 
@@ -297,7 +321,8 @@ function handle(client, raw) {
         url: client.url,
         by: client.id,
       };
-      broadcast(room, { t: 'tick', ...room.state, from: client.id }, client);
+      if (m.rel) room.state.rel = true;
+      broadcast(room, { t: 'tick', ...room.state, from: client.id, cs: room.seq || 0 }, client);
       return;
     }
 
@@ -317,6 +342,13 @@ function handle(client, raw) {
       if (!url) return;
       broadcast(room, { t: 'invite', url, title: cleanStr(m.title, 200), from: client.id, name: client.name }, client);
       addSystemMessage(room, `${client.name} herkesi davet etti: ${cleanStr(m.title, 200) || url}`);
+      return;
+    }
+
+    // İstemci arada kaçırdığı sohbet mesajlarını istiyor
+    case 'resend': {
+      const after = cleanNum(m.after);
+      for (const h of room.history) if (h.seq > after) client.ws.send(h);
       return;
     }
 
@@ -348,7 +380,10 @@ function handle(client, raw) {
       const at = Date.now() + COUNTDOWN_MS;
       const time = cleanNum(m.time);
       room.state = { paused: false, time, at, url: client.url, by: client.id };
-      broadcast(room, { t: 'countdown', at, time, url: client.url, from: client.id, name: client.name });
+      if (m.rel) room.state.rel = true;
+      const cd = { t: 'countdown', at, time, url: client.url, from: client.id, name: client.name };
+      if (m.rel) cd.rel = true;
+      broadcast(room, cd);
       addSystemMessage(room, `${client.name} geri sayım başlattı.`);
       return;
     }

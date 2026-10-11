@@ -70,6 +70,8 @@ Oda, uygulama arka plandayken de açık kalır. Kapatmak için karttaki ya da bi
 3. Artık videonun kendi düğmeleriyle oynat, durdur, sar. Hepsi ikinizde birden olur.
    **Ses dili ve altyazı** da her zamanki gibi oynatıcının kendi menüsünden seçilir (Disney+'ta sağ üstteki konuşma balonu, HBO Max'te sağ alttaki menü). Herkes kendi dilini ve altyazısını ayrı seçebilir; senkronu etkilemez.
 4. Panelde:
+   - **Oynat/Durdur, 10 sn geri, 10 sn ileri:** sohbet açıkken videoya dokunmadan kumanda. Basınca ikinizde birden olur.
+   - **Dakika:** panelde yazan süre, oynatıcının kendi ilerleme çubuğundan okunur; yani Disney+'ın gösterdiği dakikayla aynıdır.
    - **Senkronla:** bir şey ters giderse diğerinin kaldığı yere atlar.
    - **3-2-1 başlat:** geri sayımla birlikte başlatır.
    - **Buraya çağır:** açtığın bölümü diğerine gönderir.
@@ -105,6 +107,8 @@ Aynı Wi-Fi'da odanın adresini herhangi bir tarayıcıda açarsan (`http://192.
 | Bağlantı arada kopuyor | Tabletin ekranı uzun süre kapalıyken bazı telefon üreticileri uygulamaları uyutur. Ayarlar → Uygulamalar → Ortak İzle → Pil → **Kısıtlama yok** seç. |
 | Disney+ / HBO Max "desteklenmeyen tarayıcı" diyor | Ayarlarda **Masaüstü görünümü** açık mı? Açıksa o cihazda web oynatıcısı desteklenmiyor demektir; bilgisayarda eklentiyle izleyin. |
 | "Bu hesapta çok fazla cihaz izliyor" | Paketiniz aynı anda kaç ekrana izin veriyorsa o kadar kişi izleyebilir (Disney+ ve HBO Max'in standart paketleri 2 ekran). |
+| Panelde dakika yerine "–:––" yazıyor | Uygulama o sitede videonun kaçıncı dakikada olduğunu okuyamadı. Oynat/durdur yine ikinizde birden çalışır, ama sarma (ileri/geri atlama) yalnızca "10 sn ileri/geri" olarak paylaşılır. Aynı sahneye gelmek için: ikiniz de **durdurun**, kendi oynatıcınızda aynı sahneye gelin, sonra biriniz **oynatsın**. |
+| Durdurdum ama diğerinde durmadı | Birkaç saniye içinde kendiliğinden düzelir (uygulama durumu sürekli kontrol edip tekrar uygular). Düzelmezse **Senkronla**'ya dokunun. |
 | Reklam arası iki tarafta farklı zamanda geldi | Reklam bitince **Senkronla**'ya dokunun. |
 | "Oynatmak için dokun" yazısı çıkıyor | Tarayıcı sesli videonun kendiliğinden başlamasını engelledi; bir kez dokunmak yeterli. |
 | Netflix uygulamada açılmıyor | Netflix buna izin vermiyor; bilgisayarda eklentiyle izleyin. |
@@ -124,7 +128,8 @@ Aynı Wi-Fi'da odanın adresini herhangi bir tarayıcıda açarsan (`http://192.
 
 ```sh
 npm test                      # sunucu protokol testleri + ortak dosyaların güncelliği
-npm install && npm run test:e2e   # iki Chromium ile uçtan uca testler (ffmpeg gerekir)
+npm install && npm run test:e2e   # iki Chromium ile uçtan uca testler (ffmpeg gerekir):
+                              # eklenti, uygulama, mesaj kaybı/inatçı oynatıcı, dakika okuma
 node tools/sync-shared.mjs    # web/ değişince eklentideki kopyaları güncelle
 
 cd android
@@ -135,4 +140,4 @@ cd android
 - Odayı bilgisayarda açmak için: `ODA_KODU=K7M4QX ODA_ADI=Berkay node server/server.js`.
 - Kotlin sunucusu Node sunucusuyla aynı protokolü konuşur ve aynı testten geçer: `ODA_SIFRE=gizli PORT=8790 ASSETS_DIR=$PWD/web android/core/build/install/ortak-izle-sunucu/bin/ortak-izle-sunucu` ile başlat, sonra `cd server && TEST_PORT=8790 node test.js`.
 - GitHub'a her gönderimde `.github/workflows/build.yml` testleri çalıştırır ve APK'yı derler (Actions → son çalışma → **OrtakIzle-apk**).
-- Protokol (WebSocket `/ws`, JSON): `join`, `chat`, `sync` (play/pause/seek), `tick` (oynarken 4 sn'de bir konum; yalnızca son kumanda edenden kabul edilir), `nav`, `invite`, `react`, `typing`, `buffer`, `countdown`, `ping`/`pong` (saat eşitleme).
+- Protokol (WebSocket `/ws`, JSON): `join`, `chat`, `sync` (play/pause/seek), `tick` (değişiklikten sonra 10 sn boyunca saniyede bir, sonra 3 sn'de bir konum; yalnızca son kumanda edenden kabul edilir), `resend` (sıra numarası `seq` ile kaçırılan sohbet mesajlarını yeniden ister), `nav`, `invite`, `react`, `typing`, `buffer`, `countdown`, `ping`/`pong` (saat eşitleme).

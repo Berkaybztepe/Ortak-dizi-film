@@ -9,8 +9,19 @@ const require = createRequire(import.meta.url);
 const aedesLib = require('aedes');
 const { WebSocketServer, createWebSocketStream } = require('ws');
 
+// loss: odaya giden (down) mesajların düşürülme olasılığı (0..1), zor koşul testleri için
 export async function startBroker(tcpPort = 18830, wsPort = 18831) {
-  const aedes = aedesLib.createBroker ? aedesLib.createBroker() : aedesLib();
+  const state = { loss: 0, dropped: 0 };
+  const opts = {
+    authorizeForward(client, packet) {
+      if (state.loss > 0 && /\/(down|up)\//.test(packet.topic) && Math.random() < state.loss) {
+        state.dropped++;
+        return null;
+      }
+      return packet;
+    },
+  };
+  const aedes = aedesLib.createBroker ? aedesLib.createBroker(opts) : aedesLib(opts);
   if (aedes.then) await aedes;
   const tcp = net.createServer(aedes.handle);
   await new Promise((r) => tcp.listen(tcpPort, '127.0.0.1', r));
@@ -19,6 +30,8 @@ export async function startBroker(tcpPort = 18830, wsPort = 18831) {
   wss.on('connection', (ws) => aedes.handle(createWebSocketStream(ws)));
   await new Promise((r) => httpServer.listen(wsPort, '127.0.0.1', r));
   return {
+    state,
+    setLoss: (p) => (state.loss = p),
     tcp: `tcp://127.0.0.1:${tcpPort}`,
     ws: `ws://127.0.0.1:${wsPort}/mqtt`,
     async close() {
