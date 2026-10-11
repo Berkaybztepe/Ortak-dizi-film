@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Kamera çentiğinin yanına da çiz (tam ekran video için) -->
+    <style name="Theme.OrtakIzle" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/velvet</item>
+        <item name="android:colorBackground">@color/velvet</item>
+        <item name="android:colorAccent">@color/brass</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

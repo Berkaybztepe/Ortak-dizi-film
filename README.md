@@ -1,125 +1,137 @@
-# 🎬 Ortak İzle
+# Ortak İzle
 
-Kardeşinle (ya da herhangi biriyle) **aynı anda** dizi/film izlemek için küçük bir uygulama.
+Kardeşinle aynı anda, aynı saniyede dizi ve film izlemek için bir Android uygulaması ve bilgisayar eklentisi.
 
-- ⏯ **Ortak oynat / durdur / sar** — biriniz durdurunca diğerinde de durur, biriniz sarınca diğeri de aynı saniyeye gider.
-- 🔄 **Kayma düzeltmesi** — biri internet yüzünden geride kalırsa birkaç saniye içinde otomatik yakalar.
-- 💬 **Sohbet** — dizinin üstünde açılan küçük panelden mesajlaşma (tam ekranda da çalışır).
-- 👀 **Kim ne açtı** — biriniz bir bölüm açınca diğerine "Berkay *Loki* açtı — **Ben de aç**" bildirimi gelir. İstersen otomatik geçiş de açılabilir.
-- 📣 **Buraya çağır** — açtığın bölümü tek tuşla diğerine gönder.
-- Desteklenen platformlar: **Disney+**, **HBO Max**, **Apple TV+**, ayrıca Netflix, Prime Video ve YouTube.
+- **Ortak kumanda:** biriniz oynatınca, durdurunca ya da sarınca diğerinde de olur. Durunca ikiniz de aynı karede durursunuz.
+- **Bekleme:** birinin interneti takılıp video yüklenirken diğeri otomatik bekler, yükleme bitince ikiniz birlikte devam edersiniz.
+- **3-2-1 başlat:** ekranın ortasında geri sayım çıkar, ikinizde aynı anda başlar.
+- **Kayma düzeltmesi:** biri birkaç saniye geride kalırsa kendiliğinden yakalar.
+- **Sohbet ve tepkiler:** izlerken mesajlaşırsınız; 😂 🔥 gibi tepkiler karşı tarafın videosunun üstünde uçar.
+- **Kim ne açtı:** biriniz bir bölüm açınca diğerine "Berkay *Loki* açtı · **Sen de aç**" bildirimi gelir. Tek dokunuşla aynı bölüme ve aynı saniyeye gidersin.
+- **Oda tablette:** sunucu uygulamanın içinde. Ayrı bir program kurmak gerekmez. Aynı Wi-Fi'daki cihazlar odayı kendiliğinden bulur.
 
 ## Nasıl çalışıyor?
 
+Görüntü bir cihazdan diğerine aktarılmaz. Disney+, HBO Max gibi servisler videoyu şifreli (DRM) gönderir ve başka bir yere yayınlanmasına izin vermez. Bu yüzden ikiniz de ortak hesabınızla kendi cihazınızda izlersiniz. Ortak İzle sadece kumandayı, sohbeti ve "kim nerede" bilgisini eşitler. Bu sayede görüntü kalitesi düşmez, tablete de yük binmez.
+
 ```
-   Senin tarayıcın                     Tablet (sunucu)                 Kardeşinin tarayıcısı
- ┌──────────────────┐   oynat/durdur  ┌────────────────┐  oynat/durdur ┌──────────────────┐
- │ Disney+ sekmesi  │ ──────────────► │  server.js     │ ────────────► │ Disney+ sekmesi  │
- │ + Ortak İzle     │ ◄────────────── │  (oda, sohbet) │ ◄──────────── │ + Ortak İzle     │
- │   eklentisi      │      sohbet     └────────────────┘     sohbet    │   eklentisi      │
- └──────────────────┘                                                  └──────────────────┘
+ Tablet (odayı açan)                         Kardeşin
+┌──────────────────────────┐   oynat/durdur  ┌──────────────────────────┐
+│ Ortak İzle uygulaması    │ ◄─────────────► │ Ortak İzle uygulaması    │
+│  ├ oda sunucusu (8787)   │   sohbet, tepki │   ya da bilgisayarda     │
+│  └ Disney+ / HBO Max …   │                 │   Ortak İzle eklentisi   │
+└──────────────────────────┘                 └──────────────────────────┘
 ```
 
-**Görüntü sunucudan geçmez.** Disney+, HBO Max gibi servisler videoyu şifreli (DRM) gönderir, başka bir yere
-yayınlanamaz. Bu yüzden ikiniz de kendi cihazınızda, ortak hesabınızla normal şekilde giriş yapıp izlersiniz;
-uygulama sadece kumandayı ve sohbeti eşitler. Bu sayede görüntü kalitesi düşmez ve tablete yük binmez.
+## Hangi platformda nerede çalışır?
 
-Klasörler:
+| Platform | Android uygulaması | Bilgisayar eklentisi (Chrome/Edge) |
+|---|---|---|
+| Disney+ | Çalışır (masaüstü görünümüyle, bkz. not 1) | Çalışır |
+| HBO Max | Çalışır (masaüstü görünümüyle, bkz. not 1) | Çalışır |
+| Apple TV+ | Çalışır | Çalışır |
+| Prime Video | Çalışır (bkz. not 1) | Çalışır |
+| YouTube | Çalışır (denemek için en kolayı) | Çalışır |
+| Netflix | **Çalışmaz** (Netflix uygulama içi tarayıcıda oynatmaya izin vermiyor) | Çalışır |
+| Exxen, TOD, Gain, tabii ve diğerleri | "Başka site" kutusuna adresini yaz | Exxen, TOD, Gain, tabii eklentide hazır |
 
-| Klasör | Ne işe yarar |
-|---|---|
-| `server/` | Tablette çalışan sunucu. Hiçbir paket kurmak gerekmez, sadece Node.js. Ayrıca `http://tablet-adresi:8787` adresinde sohbet paneli sunar. |
-| `extension/` | İkinizin de tarayıcısına kurulan eklenti (Chrome, Edge, Brave, Opera, Firefox). |
+**Not 1:** Disney+ ve HBO Max telefon ve tabletler için resmi olarak kendi uygulamalarını öneriyor. Ortak İzle siteyi "masaüstü görünümünde" açarak web oynatıcısını kullanır. Bu çoğu cihazda çalışır, ama görüntü kalitesi cihaza göre 480p–720p ile sınırlı kalabilir. Bir platform tablette hiç açılmazsa en garantili yol bilgisayarda eklentiyi kullanmaktır. Uygulama ile eklenti aynı odada birlikte çalışır: biriniz tabletten, diğeriniz bilgisayardan izleyebilir.
 
 ---
 
-## 1) Sunucuyu tablette çalıştır (Android)
+## 1. Uygulamayı kur (Android)
 
-1. Play Store'daki eski sürüm değil, **F-Droid**'den **Termux**'u kur: <https://f-droid.org/packages/com.termux/>
-2. Termux'u aç ve şunları yaz:
-   ```sh
-   pkg update -y && pkg install -y nodejs git
-   git clone https://github.com/berkaybztepe/ortak-dizi-film.git
-   cd ortak-dizi-film/server
-   node server.js
-   ```
-3. Ekranda şöyle bir şey göreceksin:
-   ```
-   Ortak İzle sunucusu çalışıyor 🎬
-   Bu cihazda:      http://localhost:8787
-   Aynı Wi-Fi'da:   http://192.168.1.20:8787
-   ```
-   `192.168.1.20:8787` kısmı **sunucu adresin**. Eklentiye bunu yazacaksınız.
+1. Bu depodaki [`dist/OrtakIzle.apk`](dist/OrtakIzle.apk) dosyasını tablete ve kardeşinin telefonuna/tabletine indir.
+   GitHub'da dosyaya tıkla, sonra **Download raw file** (indir) düğmesine bas.
+2. Dosyayı aç. Android "bilinmeyen kaynaklardan yükleme" izni isterse, açtığın uygulamaya (Chrome ya da Dosyalar) izin ver.
+3. **Ortak İzle** uygulamasını aç ve adını yaz.
 
-İpuçları:
-- Termux arka plandayken Android uygulamayı uyutmasın diye bildirimden **"Acquire wakelock"**'a dokun.
-- Şifre koymak istersen: `ODA_SIFRE=gizli123 node server.js`
-- Port değiştirmek için: `PORT=9000 node server.js`
-- Sonraki seferlerde sadece `cd ortak-dizi-film/server && node server.js` yeterli. Güncellemek için `git pull`.
+> Android 8.0 ve üstü gerekir. Uygulama güncellemesi için yeni APK'yı aynı şekilde kurman yeterli; ayarlar ve girişler silinmez.
 
-> Bilgisayarda çalıştırmak da aynı: Node.js 18+ kur, `server` klasöründe `node server.js`.
-> (Windows'ta ilk açılışta güvenlik duvarı sorarsa **İzin ver** de.)
+## 2. Odayı tablette aç
 
-## 2) Farklı evlerdeyseniz: Tailscale (ücretsiz)
+1. Tablette **Odayı burada aç**'a dokun. Uygulama bildirim izni isterse ver; oda açıkken bildirimde kimlerin bağlı olduğu görünür.
+2. Ekrandaki bilette tabletin adresi yazar, örneğin `192.168.1.20:8787`.
+3. **Aynı Wi-Fi'daysanız:** kardeşinin uygulamasında "Bir odaya katıl" altında oda kendiliğinden görünür. Dokunması yeterli.
+4. **Farklı evlerdeyseniz:** aşağıdaki Tailscale adımına bak. Adresi **Adresi gönder** düğmesiyle WhatsApp'tan yollayabilirsin.
 
-Aynı Wi-Fi'daysanız bu adımı atla. Farklı evlerdeyseniz kardeşinin tablete ulaşabilmesi gerekir. En kolay ve
-güvenli yol **Tailscale**: modem ayarı, port açma gerektirmez.
+Oda, uygulama arka plandayken de açık kalır. Kapatmak için biletteki **Odayı kapat**'a ya da bildirimdeki **Odayı kapat**'a dokun.
 
-1. Tablete ve ikinizin bilgisayarına **Tailscale** uygulamasını kurun (<https://tailscale.com/download>).
-2. Hepsinde **aynı hesapla** giriş yapın (kardeşini kendi ağına davet de edebilirsin: Tailscale yönetim panelinde *Share*).
-3. Tailscale uygulamasında tabletin adresi görünür, `100.x.y.z` gibi. Sunucu adresi: `100.x.y.z:8787`
+## 3. Farklı evlerdeyseniz: Tailscale (ücretsiz, 5 dakika)
 
-Alternatif: `cloudflared tunnel --url http://localhost:8787` (Termux'ta `pkg install cloudflared`) sana
-`https://...trycloudflare.com` gibi bir adres verir; eklentiye onu yazabilirsiniz. Bu adres herkese açık olduğu için
-bu durumda **mutlaka `ODA_SIFRE` koy**.
+İki cihazın birbirini internet üzerinden bulabilmesi için en kolay ve güvenli yol Tailscale. Modemde ayar yapmak gerekmez.
 
-## 3) Eklentiyi ikinizin tarayıcısına kur
+1. Tablete ve kardeşinin cihazına Play Store'dan **Tailscale** uygulamasını kur.
+2. İkisinde de **aynı hesapla** giriş yap. Kardeşinin kendi hesabını kullanmasını istersen Tailscale yönetim panelinden tableti onunla paylaşabilirsin (*Share*).
+3. Tailscale açıkken tablette odayı aç. Bilette bir de **Tailscale** adresi çıkar (`100.x.y.z:8787`).
+4. Kardeşin "Bir odaya katıl" kutusuna bu adresi yazıp **Katıl**'a bassın.
 
-Önce bu depoyu indirin (GitHub'da **Code → Download ZIP**) ve zip'i açın.
+## 4. Birlikte izleme
 
-**Chrome / Edge / Brave / Opera (bilgisayar):**
-1. Adres çubuğuna `chrome://extensions` yaz (Edge'de `edge://extensions`).
-2. Sağ üstten **Geliştirici modu**'nu aç.
-3. **Paketlenmemiş öğe yükle** → `extension` klasörünü seç.
-4. Yapboz simgesinden **Ortak İzle**'yi sabitle.
+1. Salonda platformu seç (örneğin **Disney+**). İlk seferde ortak hesabınla bir kez giriş yap; uygulama girişi hatırlar.
+2. Bir bölüm aç. Kardeşine "Berkay Loki açtı · **Sen de aç**" bildirimi gider; dokununca aynı bölümde, aynı saniyede açılır.
+3. Artık videonun kendi düğmeleriyle oynat, durdur, sar. Hepsi ikinizde birden olur.
+4. Panelde:
+   - **Senkronla:** bir şey ters giderse diğerinin kaldığı yere atlar.
+   - **3-2-1 başlat:** geri sayımla birlikte başlatır.
+   - **Buraya çağır:** açtığın bölümü diğerine gönderir.
+   - Altta sohbet ve tepkiler.
+5. Yatay tutunca video solda, panel sağda olur. Paneli gizleme düğmesiyle video tam ekrana geçer; sağ üstte küçük bir sohbet düğmesi kalır, mesajlar bildirim olarak görünür. Dikeyde video üstte, panel altta durur.
 
-**Firefox (bilgisayar):** `about:debugging#/runtime/this-firefox` → **Geçici eklenti yükle** → `extension/manifest.json`.
-(Firefox imzasız eklentiyi kapanınca siler; kalıcı kullanım için Chrome/Edge daha pratik.)
+Ayarlar (sağ üstteki dişli):
+- **Diğeri bir şey açınca beni de götür:** bildirim beklemeden otomatik geçer.
+- **Masaüstü görünümü:** Disney+ ve HBO Max için açık kalmalı.
+- **İzlerken ekranı açık tut.**
+- **Oda şifresi:** odayı açan kişi şifre koyarsa katılanlar da aynısını yazar.
 
-## 4) Kullanım
+## 5. Bilgisayardan katılmak (Chrome / Edge eklentisi)
 
-1. Eklenti simgesine tıkla:
-   - **Sunucu adresi:** tabletin adresi (ör. `192.168.1.20:8787` veya `100.x.y.z:8787`)
-   - **Adın:** ör. *Berkay*
-   - **Oda adı:** ikiniz de aynısını yazın (ör. *salon*)
-   - **Bağlan**'a bas. Yeşil nokta = bağlı.
-2. Disney+ / HBO Max / Apple TV+'ya ortak hesabınızla **normal şekilde giriş yapın** (bir kere yapmanız yeterli,
-   tarayıcı hatırlar).
-3. Biriniz bölümü açsın. Diğerine **"… açtı — Ben de aç"** bildirimi gelir, tıklayınca aynı bölüme gider ve
-   **aynı saniyeye atlar**.
-4. Artık biriniz durdurunca / oynatınca / sarınca diğerinde de olur. Sağ alttaki **💬** düğmesi sohbeti açar.
-   - **⟲ Senkronla:** bir şey ters giderse diğerinin kaldığı yere atlar.
-   - **📣 Buraya çağır:** açık olan sayfayı diğerine gönderir.
-5. Tabletten (veya telefondan) sadece sohbet etmek ve kimin ne izlediğini görmek için tarayıcıda sunucu adresini aç:
-   `http://192.168.1.20:8787`
+1. Depoyu indir: GitHub'da **Code → Download ZIP**, sonra zip'i aç.
+2. Chrome'da `chrome://extensions` (Edge'de `edge://extensions`) adresini aç ve sağ üstten **Geliştirici modu**'nu aç.
+3. **Paketlenmemiş öğe yükle**'ye tıkla ve `extension` klasörünü seç. Yapboz simgesinden **Ortak İzle**'yi sabitle.
+4. Simgeye tıkla, tabletteki adresi, adını ve oda adını (`salon`) yaz, **Bağlan**'a bas.
+5. Disney+ / HBO Max / Netflix sekmesinde sağ alttaki yuvarlak düğme sohbet ve kumanda panelini açar.
 
-## Bilmen gerekenler
+Firefox'ta: `about:debugging#/runtime/this-firefox` → **Geçici eklenti yükle** → `extension/manifest.json`. Firefox bu tür eklentiyi kapanınca kaldırır; kalıcı kullanım için Chrome veya Edge daha pratik.
 
-- **Eşzamanlı izleme sınırı:** Aynı hesaptan iki cihazda izleyebilmek için paketinizin buna izin vermesi lazım
-  (Disney+ Standart/Premium ve HBO Max Standart/Premium paketleri 2+ ekrana izin veriyor; en ucuz paketlerde
-  sınır olabilir). Disney+ ve HBO Max, hesabın farklı evlerde kullanılmasını da kısıtlamaya başladı;
-  "hane dışı" uyarısı çıkarsa bu uygulamayla ilgili değil, platformun kuralı.
-- **Reklamlı paketler:** Reklam arası iki tarafta farklı zamanda gelebilir. Reklam bitince **⟲ Senkronla**'ya bas.
-- **Tarayıcı otomatik oynatmayı engellerse** ekranda "Başlatmak için dokun" çıkar, bir kere dokunman yeterli.
-- **Telefon/tablet uygulamaları** (Disney+ Android uygulaması gibi) kontrol edilemez; izleyen cihazlarda
-  platformların **web sitesi** + bu eklenti kullanılmalı. Android'de eklenti destekleyen tarayıcılar
-  (ör. Firefox Nightly, Edge Canary) ile çalışabilir ama en sorunsuz deneyim bilgisayardadır.
-- Platformlar sitelerini değiştirirse video bulma kısmı bozulabilir; `extension/content.js` içinde
-  `pickVideo()` fonksiyonu bütün `<video>` öğelerini (gölge DOM dahil) tarar, genelde ek ayar gerekmez.
+## 6. Web paneli
 
-## Geliştirici notları
+Odanın adresini herhangi bir tarayıcıda açarsan (`http://192.168.1.20:8787`) sohbet ve "kim ne izliyor" ekranı gelir. Televizyonda izlerken telefondan mesajlaşmak ve tepki göndermek için kullanışlı. Bu panel videoyu kontrol etmez.
 
-- Sunucu testleri: `cd server && npm test` (Node 22+).
-- Sunucu protokolü (JSON, WebSocket `/ws`): `join`, `chat`, `sync` (play/pause/seek), `tick` (oynarken 4 sn'de bir konum,
-  sadece son kumanda edenden kabul edilir), `nav` (açılan sayfa), `invite`, `ping`/`pong` (saat eşitleme).
-- Yeni bir platform eklemek için `extension/manifest.json` → `content_scripts.matches` listesine adresini ekle.
+## Sorun giderme
+
+| Ne oluyor? | Ne yapmalı? |
+|---|---|
+| Kardeşim odayı listede görmüyor | Aynı Wi-Fi'da olduğunuzdan emin ol. Bazı modemler cihazların birbirini görmesini engeller ("misafir ağı" ya da "AP isolation"); o durumda adresi elle yazın ya da Tailscale kullanın. |
+| "Sunucuya ulaşılamadı" | Tabletin ekranı uzun süre kapalıyken bazı telefon üreticileri uygulamaları uyutur. Ayarlar → Uygulamalar → Ortak İzle → Pil → **Kısıtlama yok** seç. |
+| Disney+ / HBO Max "desteklenmeyen tarayıcı" diyor | Ayarlarda **Masaüstü görünümü** açık mı? Açıksa o cihazda web oynatıcısı desteklenmiyor demektir; bilgisayarda eklentiyle izleyin. |
+| "Bu hesapta çok fazla cihaz izliyor" | Paketiniz aynı anda kaç ekrana izin veriyorsa o kadar kişi izleyebilir (Disney+ ve HBO Max'in standart paketleri 2 ekran). |
+| Reklam arası iki tarafta farklı zamanda geldi | Reklam bitince **Senkronla**'ya dokunun. |
+| "Oynatmak için dokun" yazısı çıkıyor | Tarayıcı sesli videonun kendiliğinden başlamasını engelledi; bir kez dokunmak yeterli. |
+| Netflix uygulamada açılmıyor | Netflix buna izin vermiyor; bilgisayarda eklentiyle izleyin. |
+
+## Proje yapısı
+
+| Klasör | İçerik |
+|---|---|
+| `android/` | Android uygulaması (Kotlin). `core/` modülü oda sunucusudur, uygulamanın içinde çalışır. |
+| `web/` | Uygulamanın arayüzü (HTML/CSS/JS), oda istemcisi ve dizi sitelerine eklenen senkron motoru. Uygulama, eklenti ve web paneli hepsi bunu kullanır. |
+| `extension/` | Chrome / Edge / Firefox eklentisi. `extension/shared/` içeriği `web/`'den kopyalanır. |
+| `server/` | Aynı sunucunun Node.js sürümü (isteğe bağlı: odayı bir bilgisayarda açmak için `node server/server.js`). |
+| `tests/` | Uçtan uca testler (iki tarayıcıyla gerçek senkron denemesi). |
+| `dist/` | Hazır APK. |
+
+### Geliştirme
+
+```sh
+npm test                      # sunucu protokol testleri + ortak dosyaların güncelliği
+npm install && npm run test:e2e   # iki Chromium ile uçtan uca testler (ffmpeg gerekir)
+node tools/sync-shared.mjs    # web/ değişince eklentideki kopyaları güncelle
+
+cd android
+./gradlew :core:test :app:assembleRelease   # APK: app/build/outputs/apk/release/app-release.apk
+```
+
+- Kotlin sunucusu Node sunucusuyla aynı protokolü konuşur ve aynı testten geçer: `ODA_SIFRE=gizli PORT=8790 ASSETS_DIR=$PWD/web android/core/build/install/ortak-izle-sunucu/bin/ortak-izle-sunucu` ile başlat, sonra `cd server && TEST_PORT=8790 node test.js`.
+- GitHub'a her gönderimde `.github/workflows/build.yml` testleri çalıştırır ve APK'yı derler (Actions → son çalışma → **OrtakIzle-apk**).
+- Protokol (WebSocket `/ws`, JSON): `join`, `chat`, `sync` (play/pause/seek), `tick` (oynarken 4 sn'de bir konum; yalnızca son kumanda edenden kabul edilir), `nav`, `invite`, `react`, `typing`, `buffer`, `countdown`, `ping`/`pong` (saat eşitleme).

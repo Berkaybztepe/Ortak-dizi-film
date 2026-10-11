@@ -15,9 +15,14 @@ const os = require('os');
 
 const PORT = parseInt(process.env.PORT || '8787', 10);
 const PASSWORD = process.env.ODA_SIFRE || ''; // boşsa şifre sorulmaz
-const PUBLIC_DIR = path.join(__dirname, 'public');
+// Arayüz dosyaları (Android uygulamasıyla ortak)
+const PUBLIC_DIR = path.join(__dirname, '..', 'web');
 const MAX_HISTORY = 100;
 const MAX_TEXT = 1000;
+const SERVER_NAME = (process.env.ODA_ADI || os.hostname() || 'Ortak İzle').slice(0, 40);
+const REACTIONS = ['😂', '😮', '😱', '❤️', '👏', '🔥', '😢', '👀'];
+const KINDS = ['app', 'eklenti', 'web'];
+const COUNTDOWN_MS = 3500;
 
 // ---------------------------------------------------------------------------
 // Minimal WebSocket (RFC 6455) — sadece metin mesajları, ping/pong ve kapanış.
@@ -163,7 +168,15 @@ function getRoom(name) {
 }
 
 function memberInfo(c) {
-  return { id: c.id, name: c.name, url: c.url, title: c.title, platform: c.platform, kind: c.kind };
+  return {
+    id: c.id,
+    name: c.name,
+    url: c.url,
+    title: c.title,
+    platform: c.platform,
+    kind: c.kind,
+    buffering: !!c.buffering,
+  };
 }
 
 function broadcast(room, msg, except) {
@@ -218,13 +231,15 @@ function handle(client, raw) {
     const roomName = cleanStr(m.room, 40).trim().toLowerCase() || 'salon';
     if (client.room) leave(client);
     client.name = cleanStr(m.name, 30).trim() || 'Misafir';
-    client.kind = m.kind === 'web' ? 'web' : 'eklenti';
+    client.kind = KINDS.includes(m.kind) ? m.kind : 'eklenti';
+    client.buffering = false;
     client.room = getRoom(roomName);
     client.room.clients.add(client);
     client.ws.send({
       t: 'welcome',
       you: memberInfo(client),
       room: roomName,
+      server: SERVER_NAME,
       members: [...client.room.clients].map(memberInfo),
       state: client.room.state,
       history: client.room.history,
@@ -279,6 +294,7 @@ function handle(client, raw) {
         paused: !!m.paused,
         time: cleanNum(m.time),
         at: Date.now(),
+        url: client.url,
         by: client.id,
       };
       broadcast(room, { t: 'tick', ...room.state, from: client.id }, client);
@@ -301,6 +317,39 @@ function handle(client, raw) {
       if (!url) return;
       broadcast(room, { t: 'invite', url, title: cleanStr(m.title, 200), from: client.id, name: client.name }, client);
       addSystemMessage(room, `${client.name} herkesi davet etti: ${cleanStr(m.title, 200) || url}`);
+      return;
+    }
+
+    // Hızlı tepki (videonun üstünde uçuşan emoji)
+    case 'react': {
+      if (!REACTIONS.includes(m.emoji)) return;
+      broadcast(room, { t: 'react', emoji: m.emoji, from: client.id, name: client.name }, client);
+      return;
+    }
+
+    // "yazıyor…" göstergesi
+    case 'typing': {
+      broadcast(room, { t: 'typing', on: !!m.on, from: client.id, name: client.name }, client);
+      return;
+    }
+
+    // Biri yükleniyor (buffer): diğerleri onu bekler
+    case 'buffer': {
+      const on = !!m.on;
+      if (client.buffering === on) return;
+      client.buffering = on;
+      broadcast(room, { t: 'buffer', on, member: memberInfo(client) }, client);
+      return;
+    }
+
+    // 3-2-1 geri sayımla birlikte başlat. Herkes (gönderen dahil) aynı sunucu
+    // anında oynatmaya başlar.
+    case 'countdown': {
+      const at = Date.now() + COUNTDOWN_MS;
+      const time = cleanNum(m.time);
+      room.state = { paused: false, time, at, url: client.url, by: client.id };
+      broadcast(room, { t: 'countdown', at, time, url: client.url, from: client.id, name: client.name });
+      addSystemMessage(room, `${client.name} geri sayım başlattı.`);
       return;
     }
 
@@ -336,13 +385,26 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.woff2': 'font/woff2',
+  '.json': 'application/json',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
 };
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/health') {
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
-    res.end(JSON.stringify({ ok: true, app: 'ortak-izle', rooms: rooms.size, password: !!PASSWORD }));
+    res.end(
+      JSON.stringify({
+        ok: true,
+        app: 'ortak-izle',
+        version: 2,
+        name: SERVER_NAME,
+        password: !!PASSWORD,
+        rooms: [...rooms.values()].map((r) => ({ name: r.name, members: [...r.clients].map((c) => c.name) })),
+      })
+    );
     return;
   }
   let p = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -356,7 +418,10 @@ const server = http.createServer((req, res) => {
       res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('Bulunamadı');
       return;
     }
-    res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'content-type': MIME[path.extname(file)] || 'application/octet-stream',
+      'cache-control': 'no-cache',
+    });
     res.end(data);
   });
 });

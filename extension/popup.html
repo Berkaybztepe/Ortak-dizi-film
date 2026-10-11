@@ -2,48 +2,75 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
+<title>Ortak İzle</title>
 <style>
-  body { margin: 0; width: 320px; background: #12141a; color: #eef0f5; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  .wrap { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-  h1 { font-size: 16px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: #e5484d; }
-  .dot.on { background: #22c39a; } .dot.wait { background: #f5a524; }
-  label { font-size: 12px; color: #a3abbb; margin-top: 2px; }
-  input[type=text], input[type=password], input:not([type]) { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid #3a4050; background: #0f1218; color: #eef0f5; font: inherit; }
-  .check { display: flex; gap: 8px; align-items: center; font-size: 13px; color: #cfd4de; }
-  button { padding: 9px; border: 0; border-radius: 8px; background: #7c5cff; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
-  button.off { background: #3a4050; }
-  .status { font-size: 12px; color: #a3abbb; min-height: 16px; }
-  .err { color: #ff8080; }
-  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  li { background: #1c2029; border-radius: 8px; padding: 6px 8px; font-size: 13px; }
-  li small { display: block; color: #a3abbb; }
-  a { color: #22c39a; }
-  hr { border: 0; border-top: 1px solid #2c313d; width: 100%; margin: 4px 0; }
+  @font-face { font-family: 'OI Display'; font-weight: 800; src: url(shared/fonts/big-shoulders-display-latin-800-normal.woff2) format('woff2'); unicode-range: U+0000-00FF,U+0131,U+2000-206F; }
+  @font-face { font-family: 'OI Display'; font-weight: 800; src: url(shared/fonts/big-shoulders-display-latin-ext-800-normal.woff2) format('woff2'); unicode-range: U+0100-02BA,U+1E00-1E9F; }
+  @font-face { font-family: 'OI Body'; font-weight: 400; src: url(shared/fonts/hanken-grotesk-latin-400-normal.woff2) format('woff2'); unicode-range: U+0000-00FF,U+0131,U+2000-206F; }
+  @font-face { font-family: 'OI Body'; font-weight: 400; src: url(shared/fonts/hanken-grotesk-latin-ext-400-normal.woff2) format('woff2'); unicode-range: U+0100-02BA,U+1E00-1E9F; }
+  @font-face { font-family: 'OI Body'; font-weight: 600; src: url(shared/fonts/hanken-grotesk-latin-600-normal.woff2) format('woff2'); unicode-range: U+0000-00FF,U+0131,U+2000-206F; }
+  @font-face { font-family: 'OI Body'; font-weight: 600; src: url(shared/fonts/hanken-grotesk-latin-ext-600-normal.woff2) format('woff2'); unicode-range: U+0100-02BA,U+1E00-1E9F; }
+  @font-face { font-family: 'OI Body'; font-weight: 700; src: url(shared/fonts/hanken-grotesk-latin-700-normal.woff2) format('woff2'); unicode-range: U+0000-00FF,U+0131,U+2000-206F; }
+  @font-face { font-family: 'OI Body'; font-weight: 700; src: url(shared/fonts/hanken-grotesk-latin-ext-700-normal.woff2) format('woff2'); unicode-range: U+0100-02BA,U+1E00-1E9F; }
+  @font-face { font-family: 'OI Mono'; font-weight: 500; src: url(shared/fonts/ibm-plex-mono-latin-500-normal.woff2) format('woff2'); }
+  :root { --velvet-0:#140e10; --velvet-1:#1c1417; --velvet-2:#261b1f; --line:#3b2b30; --paper:#f3e7da; --paper-dim:#c4b0a5;
+    --paper-mute:#8f7c75; --ink:#1a1214; --ink-mute:#6e5a52; --brass:#d6a75b; --brass-hi:#e8be78; --ok:#8cc79c; --warn:#e8936a; --bad:#e2606f;
+    --p0:#d6a75b; --p1:#8db8d8; --p2:#9cc59a; --p3:#e39aa8; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 340px; background: var(--velvet-0); color: var(--paper); font: 400 14px/1.45 'OI Body', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .wm { font: 800 22px/1 'OI Display', 'Arial Narrow', sans-serif; text-transform: uppercase; letter-spacing: .04em; }
+  .wm em { font-style: normal; color: var(--brass); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: var(--velvet-2); border: 1px solid var(--line); color: var(--paper-dim); }
+  .chip::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
+  main { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  label { font-size: 12px; color: var(--paper-dim); font-weight: 600; }
+  input[type=text], input[type=password] { width: 100%; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--velvet-2); }
+  input::placeholder { color: var(--paper-mute); }
+  input:focus { outline: none; border-color: var(--brass); }
+  .mono { font-family: 'OI Mono', ui-monospace, Menlo, monospace; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--paper-dim); cursor: pointer; }
+  .switch input { appearance: none; width: 38px; height: 22px; border-radius: 999px; background: #33252a; position: relative; flex: none; margin: 0; cursor: pointer; }
+  .switch input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--paper-dim); transition: transform .15s; }
+  .switch input:checked { background: var(--brass); }
+  .switch input:checked::after { transform: translateX(16px); background: var(--ink); }
+  .btn { height: 44px; border-radius: 10px; border: 1px solid var(--brass); background: var(--brass); color: var(--ink); font-weight: 700; cursor: pointer; }
+  .btn:hover { background: var(--brass-hi); }
+  .btn.off { background: transparent; color: var(--paper); border-color: var(--line); }
+  .err { color: var(--bad); font-size: 12px; }
+  .hint { color: var(--paper-mute); font-size: 12px; }
+  .room { border-top: 1px solid var(--line); padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .room h2 { margin: 0; font: 800 16px/1 'OI Display', 'Arial Narrow', sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--paper-dim); }
+  .m { display: flex; align-items: center; gap: 10px; }
+  .av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 12px; color: var(--ink); background: var(--pc); flex: none; }
+  .m .t { min-width: 0; display: flex; flex-direction: column; }
+  .m b { font-weight: 600; }
+  .m a, .m span.w { font-size: 12px; color: var(--paper-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
+  .m a { color: var(--brass); cursor: pointer; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1><span class="dot" id="dot"></span> Ortak İzle</h1>
-  <div class="status" id="status"></div>
-
-  <label for="serverUrl">Sunucu adresi (tabletin adresi)</label>
-  <input id="serverUrl" placeholder="ör. 192.168.1.20:8787">
-  <label for="name">Adın</label>
-  <input id="name" maxlength="30" placeholder="ör. Berkay">
-  <label for="room">Oda adı (ikiniz de aynısını yazın)</label>
-  <input id="room" maxlength="40" placeholder="salon">
-  <label for="password">Şifre (sunucuda ayarlıysa)</label>
-  <input id="password" type="password" placeholder="boş bırakabilirsin">
-  <label class="check"><input type="checkbox" id="autoFollow"> Diğeri bir şey açınca beni de otomatik götür</label>
-  <button id="toggle">Bağlan</button>
-
-  <div id="roomBox" hidden>
-    <hr>
-    <div style="font-weight:600;margin-bottom:6px">Odadakiler</div>
-    <ul id="members"></ul>
+<header><div class="wm">Ortak <em>İzle</em></div><span class="chip" id="chip">Bağlı değil</span></header>
+<main>
+  <div class="field"><label for="serverUrl">Oda adresi</label><input type="text" class="mono" id="serverUrl" placeholder="192.168.1.20:8787" spellcheck="false"></div>
+  <div class="two">
+    <div class="field"><label for="name">Adın</label><input type="text" id="name" maxlength="30" placeholder="Berkay"></div>
+    <div class="field"><label for="room">Oda</label><input type="text" id="room" maxlength="40" placeholder="salon"></div>
   </div>
-</div>
+  <div class="field"><label for="password">Şifre</label><input type="password" id="password" placeholder="Şifre yoksa boş bırak"></div>
+  <label class="switch" for="autoFollow">Diğeri bir şey açınca beni de götür<input type="checkbox" id="autoFollow"></label>
+  <button class="btn" id="toggle">Bağlan</button>
+  <div class="err" id="err" hidden></div>
+  <div class="hint">Oda adresi, odayı açan cihazda (tablette) yazar. Disney+, HBO Max, Apple TV+, Netflix, Prime Video ve YouTube'da çalışır.</div>
+</main>
+<section class="room" id="roomBox" hidden><h2>Salondakiler</h2><div id="members"></div></section>
 <script src="popup.js"></script>
 </body>
 </html>

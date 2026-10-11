@@ -1,0 +1,56 @@
+name: Derle ve test et
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Sunucu ve ortak dosyalar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
+  e2e:
+    name: Uçtan uca (eklenti + uygulama arayüzü)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npm ci || npm install
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: android-actions/setup-android@v3
+      - name: Derle
+        working-directory: android
+        run: ./gradlew --no-daemon :core:test :core:installDist :app:assembleRelease
+      - name: Kotlin sunucusunu Node testleriyle dene
+        run: |
+          ODA_SIFRE=gizli PORT=8790 ASSETS_DIR="$PWD/web" android/core/build/install/ortak-izle-sunucu/bin/ortak-izle-sunucu &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8790/health && break; sleep 1; done
+          cd server && TEST_PORT=8790 node test.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OrtakIzle-apk
+          path: android/app/build/outputs/apk/release/app-release.apk

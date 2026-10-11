@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#140e10">
+<title>Ortak İzle</title>
+<link rel="preload" href="fonts/big-shoulders-display-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/hanken-grotesk-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/></symbol>
+    <symbol id="i-count" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9.5 2h5"/></symbol>
+    <symbol id="i-call" viewBox="0 0 24 24"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.4 5.6a9 9 0 0 1 0 12.8"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12 20 4l-4 16-4-7-8-1Z"/><path d="m12 13 8-9"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-collapse" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/><path d="m9 10 2 2-2 2"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/><path d="m11 10-2 2 2 2"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12Z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-5h4v5"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></symbol>
+    <symbol id="i-exit" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5-12-7.5Z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  </defs>
+</svg>
+
+<div class="app" id="app">
+
+  <!-- 1. Karşılama: isim -->
+  <section class="welcome" id="vWelcome" hidden>
+    <div class="inner">
+      <div class="marquee">
+        <span class="eyebrow">Ortak İzle</span>
+        <h1>Aynı dizi<span>aynı saniye</span></h1>
+        <p>Biriniz durdurunca ikinizde de durur. Biriniz sarınca ikiniz de aynı sahneye gider.</p>
+      </div>
+      <form id="nameForm" autocomplete="off">
+        <div class="field">
+          <label for="nameInput">Adın</label>
+          <input class="input" id="nameInput" maxlength="30" placeholder="Örneğin Berkay" required>
+        </div>
+        <button class="btn primary" type="submit">Devam <svg class="i"><use href="#i-arrow"/></svg></button>
+      </form>
+    </div>
+  </section>
+
+  <!-- 2-3. Salon -->
+  <div class="topbar" id="topbar" hidden>
+    <div class="wordmark">Ortak <em>İzle</em></div>
+    <div class="right">
+      <span class="chip" id="connChip"><span class="dot"></span><span id="connText">Bağlı değil</span></span>
+      <button class="btn quiet icon sm" id="settingsBtn" title="Ayarlar" aria-label="Ayarlar"><svg class="i"><use href="#i-gear"/></svg></button>
+    </div>
+  </div>
+
+  <div class="lobby" id="vLobby" data-tab="salon" hidden>
+    <div class="main" id="lobbyMain">
+
+      <!-- Bağlı değilken: oda aç / katıl -->
+      <section class="section" id="connectSec">
+        <div class="section-head"><h2>Salona gir</h2></div>
+        <div class="choices">
+          <div class="choice" id="hostChoice">
+            <span class="eyebrow">Bu cihaz</span>
+            <h3>Odayı burada aç</h3>
+            <p>Bu cihaz oda sunucusu olur. Uygulama arka planda da açık kalır.</p>
+            <ol class="steps">
+              <li><span><b>Odayı aç.</b> Ekranda bu cihazın adresi çıkar.</span></li>
+              <li><span><b>Adresi gönder.</b> Aynı Wi-Fi'daysanız kardeşin seni listede zaten görür.</span></li>
+              <li><span><b>Aynı bölümü açın.</b> Oynat, durdur, sar: ikinizde birden olur.</span></li>
+            </ol>
+            <div class="actions"><button class="btn primary" id="hostBtn">Odayı aç</button></div>
+          </div>
+          <div class="choice">
+            <span class="eyebrow">Başka cihaz</span>
+            <h3>Bir odaya katıl</h3>
+            <div class="found" id="foundList"></div>
+            <div class="scan" id="scanNote"><span class="pulse"></span><span>Aynı ağdaki odalar aranıyor…</span></div>
+            <form class="row" id="joinForm" autocomplete="off">
+              <label class="sr" for="addrInput">Oda adresi</label>
+              <input class="input mono" id="addrInput" placeholder="192.168.1.20:8787" inputmode="url" autocapitalize="off" spellcheck="false">
+              <button class="btn" type="submit">Katıl</button>
+            </form>
+            <p class="hint">Farklı evlerdeyseniz Tailscale adresini yazın, örneğin <span class="mono">100.101.102.103:8787</span>.</p>
+            <p class="err" id="joinErr" hidden></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Bağlıyken: bilet -->
+      <section class="section" id="ticketSec" hidden>
+        <article class="ticket" aria-label="Oda bileti">
+          <div class="stub">
+            <span class="eyebrow" id="tkServer">Salon</span>
+            <div class="room" id="tkRoom">Salon</div>
+            <dl class="meta">
+              <div><dt>Seans</dt><dd id="tkTime">21:40</dd></div>
+              <div><dt>Koltuk</dt><dd id="tkSeatCount">2</dd></div>
+              <div><dt>Gecikme</dt><dd id="tkPing">—</dd></div>
+            </dl>
+            <div class="seats" id="tkSeats"></div>
+          </div>
+          <div class="tear">
+            <div id="tkAddrs"></div>
+            <div class="actions">
+              <button class="btn sm" id="shareBtn"><svg class="i"><use href="#i-share"/></svg>Adresi gönder</button>
+              <button class="btn sm" id="leaveBtn"><svg class="i"><use href="#i-exit"/></svg><span id="leaveTxt">Ayrıl</span></button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="now" id="nowCard" hidden>
+        <span class="avatar" id="nowAvatar">K</span>
+        <div class="txt">
+          <span class="who" id="nowWho">Kardeş izliyor · HBO Max</span>
+          <span class="what" id="nowWhat">The Last of Us</span>
+          <span class="tc" id="nowTc">00:42:17 · oynuyor</span>
+        </div>
+        <button class="btn primary" id="nowBtn">Sen de aç</button>
+      </section>
+
+      <section class="section" id="platformSec">
+        <div class="section-head">
+          <h2>Ne izliyoruz?</h2>
+          <span class="hint" id="pfHint">İlk açılışta hesabınla bir kez giriş yap.</span>
+        </div>
+        <div class="platforms" id="platforms"></div>
+      </section>
+
+      <section class="section" id="settingsSec" hidden>
+        <div class="section-head"><h2>Ayarlar</h2><button class="btn quiet sm" id="settingsClose">Kapat</button></div>
+        <div class="settings">
+          <label class="switch" for="setFollow"><span class="txt"><b>Diğeri bir şey açınca beni de götür</b><span>Kapalıyken sadece "Sen de aç" bildirimi gelir.</span></span><input type="checkbox" id="setFollow"></label>
+          <label class="switch" for="setDesktop" data-app-only><span class="txt"><b>Masaüstü görünümü</b><span>Disney+ ve HBO Max telefonda web oynatıcıyı yalnızca bu modda açar. Açık kalsın.</span></span><input type="checkbox" id="setDesktop"></label>
+          <label class="switch" for="setAwake" data-app-only><span class="txt"><b>İzlerken ekranı açık tut</b><span>Uzun sahnelerde ekran kararmasın.</span></span><input type="checkbox" id="setAwake"></label>
+        </div>
+        <form class="field" id="renameForm" autocomplete="off">
+          <label for="renameInput">Adın</label>
+          <div class="row"><input class="input" id="renameInput" maxlength="30"><button class="btn" type="submit">Kaydet</button></div>
+        </form>
+        <form class="field" id="passForm" autocomplete="off">
+          <label for="passInput">Oda şifresi</label>
+          <div class="row"><input class="input" id="passInput" type="password" placeholder="Sunucuda şifre yoksa boş bırak"><button class="btn" type="submit">Kaydet</button></div>
+          <span class="hint" data-app-only>Odayı bu cihazda açarken de bu şifre kullanılır.</span>
+        </form>
+      </section>
+    </div>
+
+    <aside class="side" id="lobbySide"></aside>
+  </div>
+
+  <nav class="tabs" id="tabs" role="tablist" hidden>
+    <button role="tab" aria-selected="true" data-tab="salon"><svg class="i"><use href="#i-home"/></svg>Salon</button>
+    <button role="tab" aria-selected="false" data-tab="chat"><svg class="i"><use href="#i-chat"/></svg>Sohbet <span class="badge-n" id="tabBadge" hidden>0</span></button>
+  </nav>
+
+  <!-- 4. İzlerken panel -->
+  <section class="watch" id="vWatch" hidden>
+    <div class="wbar">
+      <button class="btn quiet icon sm" id="homeBtn" title="Salona dön" aria-label="Salona dön"><svg class="i"><use href="#i-back"/></svg></button>
+      <div class="title"><small id="wPlatform" lang="en">Disney+</small><b id="wTitle">Bölüm seçiliyor</b></div>
+      <button class="btn quiet icon sm" id="collapseBtn" title="Paneli gizle" aria-label="Paneli gizle"><svg class="i"><use href="#i-collapse"/></svg></button>
+    </div>
+    <div class="sync">
+      <div class="tc-big" id="wTc">0:00<span class="of" id="wDur"></span></div>
+      <span class="chip" id="wChip"><span class="dot"></span><span id="wChipTxt">Video bekleniyor</span></span>
+      <div class="who" id="wWho"></div>
+    </div>
+    <div class="tools">
+      <button class="btn" id="tResync"><svg class="i"><use href="#i-sync"/></svg>Senkronla</button>
+      <button class="btn" id="tCount"><svg class="i"><use href="#i-count"/></svg>3-2-1 başlat</button>
+      <button class="btn" id="tCall"><svg class="i"><use href="#i-call"/></svg>Buraya çağır</button>
+    </div>
+    <div class="chat" id="watchChatSlot"></div>
+  </section>
+
+  <!-- 5. Tam ekranda yüzen hap -->
+  <div class="float" id="vFloat" hidden>
+    <div class="pill">
+      <div class="people" id="fPeople"></div>
+      <span class="count"><button class="btn icon" id="fOpen" title="Sohbeti aç" aria-label="Sohbeti aç"><svg class="i"><use href="#i-chat"/></svg></button><span class="unread" id="fUnread" hidden>0</span></span>
+    </div>
+    <div class="toasts" id="fToasts"></div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+</div>
+
+<!-- Sohbet: salonda yan sütunda, izlerken panelde aynı öğe kullanılır -->
+<template id="chatTpl">
+  <div class="chat">
+    <div class="chat-head"><h2>Sohbet</h2><div class="people" data-people></div></div>
+    <div class="msgs" data-msgs role="log" aria-live="polite"></div>
+    <div class="typing" data-typing></div>
+    <div class="reacts" data-reacts></div>
+    <form class="composer" data-form autocomplete="off">
+      <label class="sr" for="chatInput">Mesaj</label>
+      <input class="input" id="chatInput" data-input maxlength="1000" placeholder="Mesaj yaz" enterkeyhint="send">
+      <button class="btn primary" type="submit" aria-label="Gönder"><svg class="i"><use href="#i-send"/></svg></button>
+    </form>
+  </div>
+</template>
+
+<script src="room-client.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

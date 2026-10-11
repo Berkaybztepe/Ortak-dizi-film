@@ -1,7 +1,7 @@
 {
   "name": "ortak-izle-sunucu",
-  "version": "1.0.0",
-  "description": "Ortak dizi/film izleme için senkron + sohbet sunucusu (bağımlılık yok)",
+  "version": "2.0.0",
+  "description": "Ortak İzle oda sunucusu (bağımlılık yok). Arayüz dosyalarını ../web klasöründen sunar.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
