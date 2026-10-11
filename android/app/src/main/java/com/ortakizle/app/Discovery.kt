@@ -24,6 +24,8 @@ class Discovery(context: Context, private val onChange: (JSONArray) -> Unit) {
     private val found = LinkedHashMap<String, JSONObject>() // servis adı -> {name, host, port}
     private val queue = ArrayDeque<NsdServiceInfo>()
     private var resolving = false
+    private var gen = 0 // her start/stop'ta artar; eski oturumun geç gelen cevapları yok sayılır
+    private var pendingCb: NsdManager.ServiceInfoCallback? = null
 
     fun start() {
         if (listener != null || nsd == null) return
@@ -60,13 +62,24 @@ class Discovery(context: Context, private val onChange: (JSONArray) -> Unit) {
     }
 
     fun stop() {
+        gen++
         val l = listener ?: return
         listener = null
         try { nsd?.stopServiceDiscovery(l) } catch (_: Exception) {}
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            pendingCb?.let { try { nsd?.unregisterServiceInfoCallback(it) } catch (_: Exception) {} }
+        }
+        pendingCb = null
         try { multicast?.takeIf { it.isHeld }?.release() } catch (_: Exception) {}
         multicast = null
         queue.clear()
         resolving = false
+        found.clear()
+    }
+
+    fun shutdown() {
+        stop()
+        executor.shutdownNow()
     }
 
     fun current(): JSONArray = JSONArray(found.values.toList())
@@ -83,8 +96,15 @@ class Discovery(context: Context, private val onChange: (JSONArray) -> Unit) {
         if (resolving || listener == null) return
         val info = queue.removeFirstOrNull() ?: return
         resolving = true
+        val myGen = gen
+        var finished = false
+        lateinit var timeout: Runnable
         val done: (NsdServiceInfo?) -> Unit = { resolved ->
             main.post {
+                if (myGen != gen || finished) return@post
+                finished = true
+                main.removeCallbacks(timeout)
+                pendingCb = null
                 resolving = false
                 if (resolved != null) {
                     val host = hostOf(resolved)
@@ -101,6 +121,14 @@ class Discovery(context: Context, private val onChange: (JSONArray) -> Unit) {
             }
             Unit
         }
+        // Cevap gelmeyen çözümleme sırayı kilitlemesin
+        timeout = Runnable {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                pendingCb?.let { try { nsd?.unregisterServiceInfoCallback(it) } catch (_: Exception) {} }
+            }
+            done(null)
+        }
+        main.postDelayed(timeout, 8000)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 var cb: NsdManager.ServiceInfoCallback? = null
@@ -110,9 +138,13 @@ class Discovery(context: Context, private val onChange: (JSONArray) -> Unit) {
                         try { cb?.let { nsd?.unregisterServiceInfoCallback(it) } } catch (_: Exception) {}
                         done(si)
                     }
-                    override fun onServiceLost() {}
+                    override fun onServiceLost() {
+                        try { cb?.let { nsd?.unregisterServiceInfoCallback(it) } } catch (_: Exception) {}
+                        done(null)
+                    }
                     override fun onServiceInfoCallbackUnregistered() {}
                 }
+                pendingCb = cb
                 nsd?.registerServiceInfoCallback(info, executor, cb)
             } else {
                 nsd?.resolveService(info, object : NsdManager.ResolveListener {

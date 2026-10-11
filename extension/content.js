@@ -22,15 +22,15 @@
   // Panel ve sahne için yazı tipleri. FontFace ile ikili veriden yüklemek sayfanın
   // güvenlik politikasına (CSP) takılmaz.
   const FONTS = [
-    ['OI Display', 800, 'big-shoulders-display', 'latin'],
-    ['OI Display', 800, 'big-shoulders-display', 'latin-ext'],
-    ['OI Body', 400, 'hanken-grotesk', 'latin'],
-    ['OI Body', 400, 'hanken-grotesk', 'latin-ext'],
-    ['OI Body', 600, 'hanken-grotesk', 'latin'],
-    ['OI Body', 600, 'hanken-grotesk', 'latin-ext'],
-    ['OI Body', 700, 'hanken-grotesk', 'latin'],
-    ['OI Body', 700, 'hanken-grotesk', 'latin-ext'],
-    ['OI Mono', 500, 'ibm-plex-mono', 'latin'],
+    ['OI Sans', 500, 'plus-jakarta-sans', 'latin'],
+    ['OI Sans', 500, 'plus-jakarta-sans', 'latin-ext'],
+    ['OI Sans', 600, 'plus-jakarta-sans', 'latin'],
+    ['OI Sans', 600, 'plus-jakarta-sans', 'latin-ext'],
+    ['OI Sans', 700, 'plus-jakarta-sans', 'latin'],
+    ['OI Sans', 700, 'plus-jakarta-sans', 'latin-ext'],
+    ['OI Sans', 800, 'plus-jakarta-sans', 'latin'],
+    ['OI Sans', 800, 'plus-jakarta-sans', 'latin-ext'],
+    ['OI Mono', 600, 'ibm-plex-mono', 'latin'],
   ];
   const RANGES = {
     latin: 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2212,U+FEFF,U+FFFD',
@@ -83,7 +83,7 @@
   function start() {
     connectPort();
     loadFonts();
-    engine = OrtakIzleEngine.create({ post, onNotice: (t) => overlay && overlay.toast(t), displayFont: 'OI Display' });
+    engine = OrtakIzleEngine.create({ post, onNotice: (t) => overlay && overlay.toast(t), displayFont: 'OI Sans' });
     overlay = OrtakIzleOverlay.create({
       send: post,
       command: (cmd, arg) => engine.command(cmd, arg),

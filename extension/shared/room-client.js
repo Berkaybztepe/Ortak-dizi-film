@@ -31,6 +31,299 @@
     }
   }
 
+
+  // ==================================================================== oda kodu (internet)
+  // Farklı evlerdeki cihazlar, herkese açık ücretsiz MQTT aracı sunucuları üzerinden
+  // buluşur. Odayı açan cihaz (tablet) aracıya bağlanıp sunucu gibi davranır; diğerleri
+  // oda koduyla gelir. Tüm mesajlar oda kodundan türetilen anahtarla AES-GCM ile şifrelenir;
+  // aracı sunucu ne konuşulduğunu göremez, konu adı da kodu ele vermez.
+  const BROKERS = [
+    { ws: 'wss://broker.emqx.io:8084/mqtt', tcp: 'ssl://broker.emqx.io:8883' },
+    { ws: 'wss://broker.hivemq.com:8884/mqtt', tcp: 'ssl://broker.hivemq.com:8883' },
+    { ws: 'wss://test.mosquitto.org:8081/mqtt', tcp: 'ssl://test.mosquitto.org:8886' },
+  ];
+  const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // karışan harfler (I, L, O, 0, 1) yok
+
+  function normalizeCode(code) {
+    return String(code || '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .replace(/O/g, '0') // yazım hatalarını affet
+      .replace(/0/g, 'Q')
+      .replace(/[I1L]/g, 'J');
+  }
+  function isCode(text) {
+    return /^[A-Z0-9]{6}$/.test(normalizeCode(text)) && !/[.:]/.test(String(text));
+  }
+  function formatCode(code) {
+    const c = normalizeCode(code);
+    return c.length === 6 ? `${c.slice(0, 3)}-${c.slice(3)}` : c;
+  }
+  function newCode() {
+    const b = new Uint8Array(6);
+    crypto.getRandomValues(b);
+    return Array.from(b, (x) => CODE_ALPHABET[x % CODE_ALPHABET.length]).join('');
+  }
+
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const hex = (buf) => Array.from(new Uint8Array(buf), (x) => x.toString(16).padStart(2, '0')).join('');
+
+  async function relayKeys(code) {
+    const norm = normalizeCode(code);
+    const topic = hex(await crypto.subtle.digest('SHA-256', enc.encode('ortak-izle/konu/' + norm))).slice(0, 32);
+    const base = await crypto.subtle.importKey('raw', enc.encode(norm), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: enc.encode('ortak-izle/anahtar/v1'), iterations: 100000, hash: 'SHA-256' },
+      base,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+    return { topic: `ortakizle/v1/${topic}`, key };
+  }
+  async function seal(key, text) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(text)));
+    const out = new Uint8Array(12 + ct.length);
+    out.set(iv);
+    out.set(ct, 12);
+    return out;
+  }
+  async function open(key, bytes) {
+    if (bytes.length < 29) throw new Error('kısa');
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(0, 12) }, key, bytes.subarray(12));
+    return dec.decode(pt);
+  }
+
+  // Asgari MQTT 3.1.1 istemcisi (WebSocket üzerinden, yalnızca QoS 0)
+  class Mqtt {
+    constructor(url, clientId, handlers) {
+      this.h = handlers;
+      this.clientId = clientId;
+      this.buf = new Uint8Array(0);
+      this.connected = false;
+      this.closed = false;
+      this.pid = 1;
+      try {
+        this.ws = new WebSocket(url, ['mqtt']);
+      } catch {
+        setTimeout(() => this._close(), 0);
+        return;
+      }
+      this.ws.binaryType = 'arraybuffer';
+      this.ws.onopen = () => {
+        const id = enc.encode(clientId);
+        const body = [0, 4, 77, 81, 84, 84, 4, 2, 0, 30, id.length >> 8, id.length & 255, ...id];
+        this._send(0x10, body);
+      };
+      this.ws.onmessage = (e) => this._data(new Uint8Array(e.data));
+      this.ws.onclose = this.ws.onerror = () => this._close();
+    }
+    _send(type, body) {
+      if (!this.ws || this.ws.readyState !== 1) return;
+      const len = [];
+      let n = body.length;
+      do {
+        let d = n % 128;
+        n = Math.floor(n / 128);
+        if (n > 0) d |= 128;
+        len.push(d);
+      } while (n > 0);
+      const out = new Uint8Array(1 + len.length + body.length);
+      out[0] = type;
+      out.set(len, 1);
+      out.set(body, 1 + len.length);
+      this.ws.send(out);
+    }
+    _data(chunk) {
+      const merged = new Uint8Array(this.buf.length + chunk.length);
+      merged.set(this.buf);
+      merged.set(chunk, this.buf.length);
+      this.buf = merged;
+      for (;;) {
+        if (this.buf.length < 2) return;
+        let len = 0;
+        let mul = 1;
+        let i = 1;
+        for (;;) {
+          if (i >= this.buf.length) return;
+          const d = this.buf[i++];
+          len += (d & 127) * mul;
+          mul *= 128;
+          if (!(d & 128)) break;
+          if (i > 4) return this._close();
+        }
+        if (this.buf.length < i + len) return;
+        const type = this.buf[0] >> 4;
+        const body = this.buf.subarray(i, i + len);
+        this.buf = this.buf.slice(i + len);
+        this._packet(type, body);
+        if (this.closed) return;
+      }
+    }
+    _packet(type, body) {
+      if (type === 2) {
+        // CONNACK
+        if (body[1] !== 0) return this._close();
+        this.connected = true;
+        this.ping = setInterval(() => this._send(0xc0, []), 20000);
+        this.h.onConnect && this.h.onConnect();
+      } else if (type === 3) {
+        // PUBLISH (QoS 0)
+        const tl = (body[0] << 8) | body[1];
+        const topic = dec.decode(body.subarray(2, 2 + tl));
+        this.h.onMessage && this.h.onMessage(topic, body.slice(2 + tl));
+      }
+    }
+    subscribe(topic) {
+      const t = enc.encode(topic);
+      const id = this.pid++ & 0xffff || 1;
+      this._send(0x82, [id >> 8, id & 255, t.length >> 8, t.length & 255, ...t, 0]);
+    }
+    publish(topic, payload) {
+      const t = enc.encode(topic);
+      const body = new Uint8Array(2 + t.length + payload.length);
+      body[0] = t.length >> 8;
+      body[1] = t.length & 255;
+      body.set(t, 2);
+      body.set(payload, 2 + t.length);
+      this._send(0x30, body);
+    }
+    end() {
+      this._send(0xe0, []);
+      this._close();
+    }
+    _close() {
+      if (this.closed) return;
+      this.closed = true;
+      this.connected = false;
+      clearInterval(this.ping);
+      try {
+        this.ws && this.ws.close();
+      } catch {}
+      this.h.onClose && this.h.onClose();
+    }
+  }
+
+  // WebSocket gibi davranan, oda koduyla aracı üzerinden odaya bağlanan soket.
+  // Birden çok aracıyı aynı anda dener; odayı açan cihazın ilk cevap verdiği yol kullanılır.
+  class RelaySocket {
+    constructor(code, brokers) {
+      this.readyState = 0;
+      this.onopen = this.onmessage = this.onclose = this.onerror = null;
+      this.cid = Array.from(crypto.getRandomValues(new Uint8Array(8)), (x) => x.toString(16).padStart(2, '0')).join('');
+      this.links = [];
+      this.active = null;
+      this.lastRx = Date.now();
+      this._start(code, brokers || BROKERS.map((b) => b.ws));
+    }
+    async _start(code, urls) {
+      try {
+        const { topic, key } = await relayKeys(code);
+        this.key = key;
+        this.up = `${topic}/up/${this.cid}`;
+        this.down = `${topic}/down/${this.cid}`;
+      } catch (e) {
+        return this._fail();
+      }
+      if (this.readyState === 3) return;
+      const hello = JSON.stringify({ _: 'hello', v: 1 });
+      for (const url of urls) {
+        const link = new Mqtt(url, 'oi-' + this.cid + '-' + this.links.length, {
+          onConnect: () => {
+            link.mqtt.subscribe(this.down);
+            const say = async () => {
+              if (this.active || link.mqtt.closed) return;
+              link.mqtt.publish(this.up, await seal(this.key, hello));
+            };
+            say();
+            link.timer = setInterval(say, 1500);
+          },
+          onMessage: async (t, payload) => {
+            let text;
+            try {
+              text = await open(this.key, payload);
+            } catch {
+              return;
+            }
+            this._rx(link, text);
+          },
+          onClose: () => {
+            clearInterval(link.timer);
+            if (this.active === link) this._lost();
+            else if (!this.active && this.links.every((l) => l.mqtt.closed)) this._fail();
+          },
+        });
+        link.mqtt = link.mqtt || null;
+        this.links.push(link);
+        link.mqtt = link.mqtt || link.__m;
+      }
+      // Mqtt nesnesini bağla (yapıcıda this yoktu)
+      this.links.forEach((l, i) => (l.mqtt = l.mqtt || l._m));
+      this.giveUp = setTimeout(() => !this.active && this._fail(), 12000);
+    }
+    _rx(link, text) {
+      this.lastRx = Date.now();
+      let ctl = null;
+      if (text.startsWith('{"_"')) {
+        try {
+          ctl = JSON.parse(text);
+        } catch {}
+      }
+      if (ctl && ctl._) {
+        if (ctl._ === 'hi' && !this.active) {
+          this.active = link;
+          clearTimeout(this.giveUp);
+          for (const l of this.links) {
+            clearInterval(l.timer);
+            if (l !== link) l.mqtt.end();
+          }
+          this.readyState = 1;
+          this.watch = setInterval(() => Date.now() - this.lastRx > 40000 && this._lost(), 5000);
+          this.onopen && this.onopen();
+        } else if ((ctl._ === 'bye' || ctl._ === 'reset') && this.active === link) {
+          this._lost();
+        }
+        return;
+      }
+      if (this.active === link && this.readyState === 1) this.onmessage && this.onmessage({ data: text });
+    }
+    send(text) {
+      if (this.readyState !== 1 || !this.active) return;
+      seal(this.key, String(text)).then((b) => this.active && this.active.mqtt.publish(this.up, b));
+    }
+    close() {
+      if (this.readyState === 3) return;
+      if (this.active && this.readyState === 1) {
+        const link = this.active;
+        seal(this.key, JSON.stringify({ _: 'bye' })).then((b) => {
+          link.mqtt.publish(this.up, b);
+          setTimeout(() => link.mqtt.end(), 50);
+        });
+      }
+      this._finish(true);
+    }
+    _lost() {
+      this._finish(false);
+    }
+    _fail() {
+      this.failed = true;
+      this._finish(false);
+    }
+    _finish(byUser) {
+      if (this.readyState === 3) return;
+      this.readyState = 3;
+      clearTimeout(this.giveUp);
+      clearInterval(this.watch);
+      for (const l of this.links) {
+        clearInterval(l.timer);
+        if (!byUser || l !== this.active) l.mqtt && l.mqtt.end();
+      }
+      this.onclose && this.onclose({});
+    }
+  }
+
   class RoomClient {
     /**
      * @param {{onEvent:(m:any)=>void, kind?:string}} opts

@@ -131,7 +131,7 @@ try {
   // B salona döner
   await B.ui.locator('#homeBtn').click();
   await sleep(500);
-  (await B.ui.locator('#vLobby').isVisible()) ? pass('Salona dönüş çalışıyor') : fail('Salona dönülemedi');
+  (await B.ui.locator('#vLobby').isVisible()) ? pass('Ana ekrana dönüş çalışıyor') : fail('Ana ekrana dönülemedi');
 
   for (const X of [A, B]) for (const l of X.log) fail(`${X.label}: ${l}`);
 } catch (e) {

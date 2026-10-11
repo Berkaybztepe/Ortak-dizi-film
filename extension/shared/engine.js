@@ -110,18 +110,18 @@
     host.setAttribute('data-ortak-izle', 'stage');
     host.style.cssText = 'all:initial;position:fixed;inset:0;z-index:2147483646;pointer-events:none;';
     const root = host.attachShadow({ mode: 'open' });
-    const display = `${fontFamily ? `'${fontFamily}',` : ''}'Arial Narrow','Roboto Condensed',sans-serif`;
+    const display = `${fontFamily ? `'${fontFamily}',` : ''}system-ui,-apple-system,'Segoe UI',Roboto,sans-serif`;
     root.innerHTML = `
       <style>
-        :host { --paper:#f3e7da; --ink:#140e10; --brass:#d6a75b; }
+        :host { --paper:#ffffff; --ink:#160803; --brass:#ff6b3d; }
         .center { position:absolute; inset:0; display:grid; place-items:center; }
         .count { font:800 clamp(120px, 28vmin, 260px)/1 ${display}; color:var(--paper);
           text-shadow:0 4px 24px rgba(0,0,0,.7); font-variant-numeric:tabular-nums; letter-spacing:.02em;
           width:1.6em; height:1.6em; display:grid; place-items:center; border-radius:50%;
-          background:radial-gradient(circle, rgba(20,14,16,.62) 0 58%, rgba(20,14,16,0) 71%); }
+          background:radial-gradient(circle, rgba(11,11,12,.62) 0 58%, rgba(11,11,12,0) 71%); }
         .count.pop { animation:pop .9s ease-out both; }
         .note { font:600 15px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--paper);
-          background:rgba(20,14,16,.86); border:1px solid rgba(214,167,91,.45); padding:10px 16px; border-radius:999px;
+          background:rgba(11,11,12,.88); border:2px solid #ff6b3d; padding:10px 16px; border-radius:999px;
           display:flex; align-items:center; gap:10px; box-shadow:0 8px 30px rgba(0,0,0,.4); }
         .spin { width:14px; height:14px; border-radius:50%; border:2px solid rgba(243,231,218,.25);
           border-top-color:var(--brass); animation:spin 1s linear infinite; }
@@ -133,7 +133,7 @@
           animation:rise 3.2s cubic-bezier(.2,.7,.3,1) forwards; }
         .r .e { font-size:44px; line-height:1; filter:drop-shadow(0 4px 10px rgba(0,0,0,.45)); }
         .r .n { font:600 11px/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--paper);
-          background:rgba(20,14,16,.75); padding:3px 6px; border-radius:6px; }
+          background:rgba(11,11,12,.8); padding:3px 7px; border-radius:999px; }
         [hidden] { display:none !important; }
         @keyframes pop { 0% { transform:scale(.7); opacity:0 } 20% { transform:scale(1); opacity:1 } 100% { opacity:.7; transform:scale(1.03) } }
         @keyframes spin { to { transform:rotate(360deg) } }

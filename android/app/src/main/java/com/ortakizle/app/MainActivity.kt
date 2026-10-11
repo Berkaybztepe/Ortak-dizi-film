@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
     private var insets = intArrayOf(0, 0, 0, 0) // sol, üst, sağ, alt (sistem çubukları + klavye)
     private var lastLayoutMode = ""
     private var discovery: Discovery? = null
+    private var uiDead = false
 
     private val density get() = resources.displayMetrics.density
 
@@ -88,7 +89,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
-        root = FrameLayout(this).apply { setBackgroundColor(Color.parseColor("#140E10")) }
+        root = FrameLayout(this).apply { setBackgroundColor(Color.parseColor("#0B0B0C")) }
         playerBox = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             visibility = View.GONE
@@ -125,10 +126,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         try { unregisterReceiver(hostStopped) } catch (_: Exception) {}
-        discovery?.stop()
-        player?.destroy()
-        ui.destroy()
+        discovery?.shutdown()
+        closePopup()
+        player?.let {
+            playerBox.removeView(it)
+            it.destroy()
+        }
+        player = null
+        if (!uiDead) {
+            root.removeView(ui)
+            ui.destroy()
+        }
         super.onDestroy()
+    }
+
+    // Arka plandayken ağ taraması pil yemesin; arayüz dönünce yeniden başlatır
+    override fun onStop() {
+        super.onStop()
+        discovery?.stop()
     }
 
     override fun onPause() {
@@ -181,6 +196,9 @@ class MainActivity : ComponentActivity() {
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 Log.w(TAG, "Arayüz süreci kapandı, yeniden başlatılıyor")
+                uiDead = true
+                root.removeView(ui)
+                ui.destroy()
                 recreate()
                 return true
             }
@@ -190,7 +208,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun js(code: String) {
-        runOnUiThread { if (!isDestroyed) ui.evaluateJavascript(code, null) }
+        runOnUiThread { if (!isDestroyed && !uiDead) ui.evaluateJavascript(code, null) }
     }
 
     // Arayüzden (yalnızca kendi dosyalarımızdan) çağrılan yerel işlevler
@@ -297,7 +315,7 @@ class MainActivity : ComponentActivity() {
         val engine = assets.open("web/engine.js").use { it.readBytes().toString(Charsets.UTF_8) }
         val font = try {
             Base64.encodeToString(
-                assets.open("web/fonts/big-shoulders-display-latin-800-normal.woff2").use { it.readBytes() },
+                assets.open("web/fonts/plus-jakarta-sans-latin-800-normal.woff2").use { it.readBytes() },
                 Base64.NO_WRAP,
             )
         } catch (_: Exception) {
@@ -317,12 +335,12 @@ class MainActivity : ComponentActivity() {
                 if ('$font') {
                   var bin = atob('$font'), buf = new Uint8Array(bin.length);
                   for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-                  var face = new FontFace('OI Display', buf.buffer, { weight: '800' });
+                  var face = new FontFace('OI Sans', buf.buffer, { weight: '800' });
                   face.load().then(function () { document.fonts.add(face); }).catch(function () {});
                 }
               } catch (e) {}
               function start() {
-                var engine = OrtakIzleEngine.create({ post: post, displayFont: 'OI Display' });
+                var engine = OrtakIzleEngine.create({ post: post, displayFont: 'OI Sans' });
                 window.__ortakIzleRecv = function (m) { engine.receive(typeof m === 'string' ? JSON.parse(m) : m); };
               }
               if (document.body) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
@@ -373,6 +391,12 @@ class MainActivity : ComponentActivity() {
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 Log.w(TAG, "Oynatıcı süreci kapandı")
+                // Aynı süreçteki arayüz de gitmiş olabilir; ölü WebView'a dokunmadan kapat
+                if (view == player) {
+                    playerBox.removeView(view)
+                    player = null
+                    view.destroy()
+                }
                 closePlayer(notify = true)
                 return true
             }
@@ -401,6 +425,7 @@ class MainActivity : ComponentActivity() {
 
             // Giriş pencereleri (Apple ID, Google, Disney hesabı açılır pencereleri)
             override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+                if (!isUserGesture) return false // reklam açılır pencereleri
                 val child = openPopup()
                 (resultMsg.obj as WebView.WebViewTransport).webView = child
                 resultMsg.sendToTarget()
@@ -462,13 +487,16 @@ class MainActivity : ComponentActivity() {
         if (scheme == "http" || scheme == "https" || scheme == "about" || scheme == "blob" || scheme == "data") return false
         if (scheme == "intent") {
             val fallback = Regex("S\\.browser_fallback_url=([^;]+)").find(uri.toString())?.groupValues?.get(1)
-            if (fallback != null) view.loadUrl(Uri.decode(fallback))
+            if (fallback != null) Uri.decode(fallback).takeIf(::isWeb)?.let(view::loadUrl)
         }
         Log.i(TAG, "Engellenen bağlantı: $uri")
         return true
     }
 
+    private fun isWeb(u: String) = Uri.parse(u).scheme?.lowercase().let { it == "http" || it == "https" }
+
     private fun openPlayer(url: String) {
+        if (!isWeb(url)) return
         val wv = player ?: createPlayer().also {
             player = it
             playerBox.addView(it, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -514,7 +542,7 @@ class MainActivity : ComponentActivity() {
         closePopup()
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#140E10"))
+            setBackgroundColor(Color.parseColor("#0B0B0C"))
             isClickable = true
         }
         val bar = LinearLayout(this).apply {
@@ -524,12 +552,12 @@ class MainActivity : ComponentActivity() {
         }
         val title = TextView(this).apply {
             text = "Giriş"
-            setTextColor(Color.parseColor("#F3E7DA"))
+            setTextColor(Color.WHITE)
             textSize = 15f
         }
         val close = TextView(this).apply {
             text = "Kapat"
-            setTextColor(Color.parseColor("#D6A75B"))
+            setTextColor(Color.parseColor("#FF6B3D"))
             textSize = 15f
             setPadding(dp(16), dp(10), dp(16), dp(10))
             setOnClickListener { closePopup() }
@@ -538,6 +566,7 @@ class MainActivity : ComponentActivity() {
         bar.addView(close)
         val web = WebView(this)
         configureBrowser(web)
+        web.settings.setSupportMultipleWindows(false)
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = handleSpecialUrl(view, request.url)
             override fun onPageFinished(view: WebView, url: String?) {
@@ -577,10 +606,7 @@ class MainActivity : ComponentActivity() {
                 val w = popupWeb
                 if (w != null && w.canGoBack()) w.goBack() else closePopup()
             }
-            customView != null -> {
-                customCallback?.onCustomViewHidden()
-                hideCustomView()
-            }
+            customView != null -> hideCustomView()
             watching -> {
                 val p = player
                 if (p != null && p.canGoBack()) p.goBack() else closePlayer(notify = true)

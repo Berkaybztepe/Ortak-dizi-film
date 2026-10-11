@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<meta name="theme-color" content="#140e10">
+<meta name="theme-color" content="#0b0b0c">
 <title>Ortak İzle</title>
-<link rel="preload" href="fonts/big-shoulders-display-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="fonts/hanken-grotesk-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/plus-jakarta-sans-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/plus-jakarta-sans-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="app.css">
 </head>
@@ -30,6 +30,7 @@
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5-12-7.5Z"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-logo" viewBox="0 0 24 24"><path d="M6 3.8v16.4a1 1 0 0 0 1.5.86l13.2-8.2a1 1 0 0 0 0-1.72L7.5 2.94A1 1 0 0 0 6 3.8Z"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   </defs>
 </svg>
@@ -40,8 +41,8 @@
   <section class="welcome" id="vWelcome" hidden>
     <div class="inner">
       <div class="marquee">
-        <span class="eyebrow">Ortak İzle</span>
-        <h1>Aynı dizi<span>aynı saniye</span></h1>
+        <span class="logo"><svg><use href="#i-logo"/></svg></span>
+        <h1>Aynı dizi<br><span>aynı saniye</span></h1>
         <p>Biriniz durdurunca ikinizde de durur. Biriniz sarınca ikiniz de aynı sahneye gider.</p>
       </div>
       <form id="nameForm" autocomplete="off">
@@ -54,21 +55,21 @@
     </div>
   </section>
 
-  <!-- 2-3. Salon -->
+  <!-- 2-3. Oda (ana ekran) -->
   <div class="topbar" id="topbar" hidden>
-    <div class="wordmark">Ortak <em>İzle</em></div>
+    <div class="wordmark"><span class="logo"><svg><use href="#i-logo"/></svg></span>Ortak İzle</div>
     <div class="right">
       <span class="chip" id="connChip"><span class="dot"></span><span id="connText">Bağlı değil</span></span>
       <button class="btn quiet icon sm" id="settingsBtn" title="Ayarlar" aria-label="Ayarlar"><svg class="i"><use href="#i-gear"/></svg></button>
     </div>
   </div>
 
-  <div class="lobby" id="vLobby" data-tab="salon" hidden>
+  <div class="lobby" id="vLobby" data-tab="room" hidden>
     <div class="main" id="lobbyMain">
 
       <!-- Bağlı değilken: oda aç / katıl -->
       <section class="section" id="connectSec">
-        <div class="section-head"><h2>Salona gir</h2></div>
+        <div class="section-head"><h2>Odaya bağlan</h2></div>
         <div class="choices">
           <div class="choice" id="hostChoice">
             <span class="eyebrow">Bu cihaz</span>
@@ -99,13 +100,13 @@
 
       <!-- Bağlıyken: bilet -->
       <section class="section" id="ticketSec" hidden>
-        <article class="ticket" aria-label="Oda bileti">
+        <article class="ticket" aria-label="Oda">
           <div class="stub">
-            <span class="eyebrow" id="tkServer">Salon</span>
-            <div class="room" id="tkRoom">Salon</div>
+            <span class="eyebrow" id="tkServer">Oda</span>
+            <div class="room" id="tkRoom">Berkay'ın odası</div>
             <dl class="meta">
-              <div><dt>Seans</dt><dd id="tkTime">21:40</dd></div>
-              <div><dt>Koltuk</dt><dd id="tkSeatCount">2</dd></div>
+              <div><dt>Bağlandın</dt><dd id="tkTime">21:40</dd></div>
+              <div><dt>Kişi</dt><dd id="tkSeatCount">2</dd></div>
               <div><dt>Gecikme</dt><dd id="tkPing">—</dd></div>
             </dl>
             <div class="seats" id="tkSeats"></div>
@@ -161,14 +162,14 @@
   </div>
 
   <nav class="tabs" id="tabs" role="tablist" hidden>
-    <button role="tab" aria-selected="true" data-tab="salon"><svg class="i"><use href="#i-home"/></svg>Salon</button>
+    <button role="tab" aria-selected="true" data-tab="room"><svg class="i"><use href="#i-home"/></svg>Oda</button>
     <button role="tab" aria-selected="false" data-tab="chat"><svg class="i"><use href="#i-chat"/></svg>Sohbet <span class="badge-n" id="tabBadge" hidden>0</span></button>
   </nav>
 
   <!-- 4. İzlerken panel -->
   <section class="watch" id="vWatch" hidden>
     <div class="wbar">
-      <button class="btn quiet icon sm" id="homeBtn" title="Salona dön" aria-label="Salona dön"><svg class="i"><use href="#i-back"/></svg></button>
+      <button class="btn quiet icon sm" id="homeBtn" title="Ana ekrana dön" aria-label="Ana ekrana dön"><svg class="i"><use href="#i-back"/></svg></button>
       <div class="title"><small id="wPlatform" lang="en">Disney+</small><b id="wTitle">Bölüm seçiliyor</b></div>
       <button class="btn quiet icon sm" id="collapseBtn" title="Paneli gizle" aria-label="Paneli gizle"><svg class="i"><use href="#i-collapse"/></svg></button>
     </div>
@@ -197,7 +198,7 @@
   <div class="toasts" id="toasts"></div>
 </div>
 
-<!-- Sohbet: salonda yan sütunda, izlerken panelde aynı öğe kullanılır -->
+<!-- Sohbet: ana ekranda yan sütunda, izlerken panelde aynı öğe kullanılır -->
 <template id="chatTpl">
   <div class="chat">
     <div class="chat-head"><h2>Sohbet</h2><div class="people" data-people></div></div>

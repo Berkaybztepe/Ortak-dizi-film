@@ -10,7 +10,7 @@ function render(st) {
   if (!filled) {
     filled = true;
     for (const f of FIELDS) $(f).value = st.settings[f] || '';
-    if (!$('room').value) $('room').value = 'salon';
+    $('room').value = st.settings.room || 'salon';
     $('autoFollow').checked = !!st.settings.autoFollow;
   }
   const ok = st.wsState === 'bağlı' && st.room.me;
@@ -47,7 +47,7 @@ function render(st) {
       } else {
         const w = document.createElement('span');
         w.className = 'w';
-        w.textContent = m.buffering ? 'yükleniyor' : m.title || (m.kind === 'web' ? 'web panelinde' : m.kind === 'app' ? 'uygulamada' : 'salonda');
+        w.textContent = m.buffering ? 'yükleniyor' : m.title || (m.kind === 'web' ? 'web panelinde' : m.kind === 'app' ? 'uygulamada' : 'odada');
         t.append(w);
       }
       row.append(av, t);

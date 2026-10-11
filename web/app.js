@@ -42,6 +42,15 @@
     const ss = String(s % 60).padStart(2, '0');
     return hh ? `${hh}:${String(mm).padStart(2, '0')}:${ss}` : `${mm}:${ss}`;
   }
+  // Türkçe iyelik eki: Berkay'ın, Ayşe'nin, Umut'un, Gönül'ün
+  function possessive(name) {
+    const n = String(name).trim();
+    const vowels = n.toLocaleLowerCase('tr-TR').match(/[aeıioöuü]/g);
+    const v = vowels ? vowels[vowels.length - 1] : 'e';
+    const suf = { a: 'ın', ı: 'ın', e: 'in', i: 'in', o: 'un', u: 'un', ö: 'ün', ü: 'ün' }[v];
+    const endsVowel = /[aeıioöuü]$/i.test(n.toLocaleLowerCase('tr-TR'));
+    return `${n}'${endsVowel ? 'n' : ''}${suf}`;
+  }
   const clock = (ms) => new Date(ms).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
   const initial = (name) => (name || '?').trim().charAt(0).toLocaleUpperCase('tr-TR') || '?';
   function sameContent(a, b) {
@@ -108,7 +117,7 @@
   const ui = {
     view: 'welcome', // welcome | lobby | watch
     layout: 'full', // full | side | bottom | float
-    tab: 'salon',
+    tab: 'room',
     showSettings: false,
     unread: 0,
     engine: null, // oynatıcıdan gelen son durum
@@ -199,7 +208,7 @@
         h(
           'div',
           { class: 'empty-chat' },
-          h('b', null, 'Sessiz salon'),
+          h('b', null, 'Henüz mesaj yok'),
           client.me ? 'İlk mesajı sen yaz. Tepkiler videonun üstünde uçuşur.' : 'Bir odaya girince mesajlar burada görünür.'
         )
       );
@@ -266,8 +275,18 @@
   }
 
   // ---------------------------------------------------------------- oda olayları
+  // Oynatıcı sayfası güvenilmez (dizi sitesinin kodu da orada çalışıyor): yalnızca
+  // senkron için gereken bilgiyi gönder, sohbet metinlerini gönderme.
+  const PLAYER_EVENTS = new Set(['status', 'clock', 'welcome', 'member-join', 'member-leave', 'nav', 'buffer', 'state', 'sync', 'tick', 'countdown', 'react']);
+  function forPlayer(m) {
+    if (m.t !== 'status' && m.t !== 'welcome') return m;
+    const room = m.t === 'status' ? m.room : null;
+    if (m.t === 'welcome') return { ...m, history: [] };
+    return { ...m, room: { ...room, history: [] } };
+  }
+
   function onRoomEvent(m) {
-    if (ui.playerOpen && m.t !== 'pong') native.call('toPlayer', m);
+    if (ui.playerOpen && PLAYER_EVENTS.has(m.t)) native.call('toPlayer', forPlayer(m));
     const meId = client.me?.id;
     switch (m.t) {
       case 'status':
@@ -306,11 +325,11 @@
         renderTyping();
         break;
       case 'member-join':
-        toast(`${m.member.name} salona girdi.`);
+        toast(`${m.member.name} odaya katıldı.`);
         render();
         break;
       case 'member-leave':
-        toast(`${m.member.name} salondan çıktı.`);
+        toast(`${m.member.name} odadan çıktı.`);
         render();
         break;
       case 'nav':
@@ -400,7 +419,7 @@
     if (!m || typeof m !== 'object') return;
     switch (m.t) {
       case 'hello':
-        native.call('toPlayer', client.status());
+        native.call('toPlayer', forPlayer(client.status()));
         break;
       case 'engine':
         if (m.url && m.url !== ui.engine?.url) dropOffers(m.url);
@@ -558,20 +577,17 @@
   function renderTicket() {
     if ($('ticketSec').hidden) return;
     const connected = client.state === 'bağlı' && !!client.me;
-    $('tkRoom').textContent = client.roomName || settings.room || 'salon';
-    $('tkServer').textContent = ui.host?.hosting
-      ? 'Bu cihazda açık'
-      : client.serverName
-        ? `Sunucu · ${client.serverName}`
-        : 'Sunucu';
+    const owner = ui.host?.hosting ? settings.name : (client.serverName || '').split(' · ')[0];
+    $('tkRoom').textContent = owner ? `${possessive(owner)} odası` : 'Ortak oda';
+    $('tkServer').textContent = ui.host?.hosting ? 'Oda bu cihazda açık' : connected ? 'Odadasın' : 'Bağlanıyor';
     $('tkTime').textContent = ui.joinedAt ? clock(ui.joinedAt) : '—';
     $('tkSeatCount').textContent = connected ? String(client.members.length) : '—';
     $('tkPing').textContent = connected && ui.rtt != null ? `${Math.round(ui.rtt)} ms` : '—';
     $('tkSeats').replaceChildren(
       ...(connected
         ? client.members.map((m) => {
-            const where = m.id === client.me.id ? 'sen' : m.buffering ? 'yükleniyor' : m.title ? 'izliyor' : m.kind === 'web' ? 'panelde' : 'salonda';
-            return h('span', { class: 'seat' }, avatar(m, 'sm'), m.name, h('small', null, where));
+            const where = m.id === client.me.id ? 'sen' : m.buffering ? 'yükleniyor' : m.title ? 'izliyor' : m.kind === 'web' ? 'panelde' : 'odada';
+            return h('span', { class: 'seat' }, avatar(m, m.id === client.me.id ? 'sm me' : 'sm'), m.name, h('small', null, where));
           })
         : [h('span', { class: 'seat' }, client.state === 'hata' ? 'Bağlantı bekleniyor…' : 'Bağlanıyor…')])
     );
@@ -697,7 +713,7 @@
       txt = `${waiting[0].name} yükleniyor`;
     } else if (!others.length) {
       cls = '';
-      txt = 'Salonda yalnızsın';
+      txt = 'Odada yalnızsın';
     } else if (st && st.url && e.url && !sameContent(st.url, e.url)) {
       cls = 'warn';
       txt = 'Farklı bölümdesiniz';
@@ -713,7 +729,7 @@
       ...client.members.map((m) => {
         const mine = m.id === meId;
         const same = mine ? !!e?.hasVideo : m.url && e?.url && sameContent(m.url, e.url);
-        const where = m.buffering ? 'yükleniyor' : same ? 'burada' : m.title ? m.title : m.kind === 'web' ? 'panelde' : 'salonda';
+        const where = m.buffering ? 'yükleniyor' : same ? 'burada' : m.title ? m.title : m.kind === 'web' ? 'panelde' : 'odada';
         return h('span', { style: `--pc:${colorOf(m.id)}` }, h('i'), `${mine ? 'Sen' : m.name} · ${where}`);
       })
     );
@@ -764,7 +780,7 @@
   $('shareBtn').addEventListener('click', share);
   $('settingsBtn').addEventListener('click', () => {
     ui.showSettings = !ui.showSettings;
-    ui.tab = 'salon';
+    ui.tab = 'room';
     render();
     if (ui.showSettings) $('settingsSec').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
@@ -835,7 +851,14 @@
       renderFound();
     },
     onHostState(s) {
+      const was = ui.host?.hosting;
       ui.host = typeof s === 'string' ? JSON.parse(s) : s;
+      // Oda bildirimden kapatıldıysa kapalı sunucuya bağlanmaya çalışmayı bırak
+      if (was && !ui.host?.hosting) {
+        leave();
+        toast('Oda kapatıldı.');
+        return;
+      }
       render();
     },
     onPlayerClosed() {
@@ -846,8 +869,9 @@
       render();
     },
     onResume() {
-      // Uygulama arka plandan dönünce bağlantıyı tazele
+      // Uygulama arka plandan dönünce bağlantıyı tazele, gerekirse ağ taramasını sürdür
       if (client.config && client.state !== 'bağlı') client.connect(client.config);
+      if (ENV === 'app' && !client.config) native.call('startDiscovery');
     },
   };
 

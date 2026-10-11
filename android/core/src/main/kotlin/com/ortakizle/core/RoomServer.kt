@@ -305,7 +305,7 @@ class RoomServer(
         }
         val client = Client(newId())
         val conn = WsConn(sock, out) { synchronized(lock) { leave(client) } }
-        client.ws = conn
+        client.peer = conn
         wsConns.add(conn)
         conn.startWriter()
         conn.readLoop(input) { text -> synchronized(lock) { handle(client, text) } }
@@ -326,11 +326,50 @@ class RoomServer(
 
     // Tek bir WebSocket bağlantısı. Yazmalar kuyruk + yazıcı iş parçacığıyla sıralanır,
     // böylece çerçeveler karışmaz ve oda kilidi yavaş istemciyi beklemez.
+    // Bir istemciye mesaj gönderme yolu: gerçek WebSocket ya da aracı (relay) üzerinden sanal bağlantı
+    private interface Peer {
+        fun sendText(text: String)
+        fun send(msg: JsonElement) = sendText(msg.toString())
+    }
+
+    /** Aracı sunucu (MQTT) üzerinden gelen bir istemci için sanal bağlantı */
+    interface VirtualConnection {
+        val id: String
+        fun receive(text: String)
+        fun close()
+    }
+
+    /**
+     * Ağdan değil de başka bir yoldan (ör. oda kodu ile internet üzerinden aracı sunucu)
+     * gelen bir istemciyi odaya bağlar. [send] bu istemciye gidecek her mesaj için çağrılır.
+     */
+    fun attachVirtual(send: (String) -> Unit): VirtualConnection {
+        val client = Client(newId())
+        client.peer = object : Peer {
+            override fun sendText(text: String) = send(text)
+        }
+        var closed = false
+        return object : VirtualConnection {
+            override val id = client.id
+            override fun receive(text: String) {
+                if (text.length > 1_000_000) return
+                synchronized(lock) { if (!closed) handle(client, text) }
+            }
+            override fun close() {
+                synchronized(lock) {
+                    if (closed) return
+                    closed = true
+                    leave(client)
+                }
+            }
+        }
+    }
+
     private inner class WsConn(
         private val sock: Socket,
         private val out: OutputStream,
         private val onClose: () -> Unit,
-    ) {
+    ) : Peer {
         private val open = AtomicBoolean(true)
         private val queue = LinkedBlockingQueue<ByteArray>()
         private val poison = ByteArray(0)
@@ -389,7 +428,8 @@ class RoomServer(
 
         fun sendFrame(opcode: Int, payload: ByteArray) = sendEncoded(encodeFrame(opcode, payload))
 
-        fun send(msg: JsonElement) = sendFrame(Opcode.TEXT, msg.toString().toByteArray(Charsets.UTF_8))
+        override fun sendText(text: String) = sendFrame(Opcode.TEXT, text.toByteArray(Charsets.UTF_8))
+        override fun send(msg: JsonElement) = sendText(msg.toString())
 
         fun sendEncoded(frame: ByteArray) {
             if (!open.get()) return
@@ -459,7 +499,7 @@ class RoomServer(
     }
 
     private inner class Client(val id: String) {
-        lateinit var ws: WsConn
+        lateinit var peer: Peer
         var room: Room? = null
         var name = ""
         var url: String? = null
@@ -483,8 +523,14 @@ class RoomServer(
     private fun getRoom(roomName: String): Room = rooms.getOrPut(roomName) { Room(roomName) }
 
     private fun broadcast(room: Room, msg: JsonObject, except: Client? = null) {
-        val frame = encodeFrame(Opcode.TEXT, msg.toString().toByteArray(Charsets.UTF_8))
-        for (c in room.clients) if (c !== except) c.ws.sendEncoded(frame)
+        val text = msg.toString()
+        var frame: ByteArray? = null
+        for (c in room.clients) {
+            if (c === except) continue
+            val p = c.peer
+            if (p is WsConn) p.sendEncoded(frame ?: encodeFrame(Opcode.TEXT, text.toByteArray(Charsets.UTF_8)).also { frame = it })
+            else p.sendText(text)
+        }
     }
 
     private fun pushHistory(room: Room, msg: JsonObject) {
@@ -504,7 +550,7 @@ class RoomServer(
     }
 
     private fun error(client: Client, code: String, message: String) {
-        client.ws.send(buildJsonObject {
+        client.peer.send(buildJsonObject {
             put("t", "error")
             put("code", code)
             put("message", message)
@@ -528,7 +574,7 @@ class RoomServer(
 
         // Saat eşitleme her zaman serbest
         if (t == "ping") {
-            client.ws.send(buildJsonObject {
+            client.peer.send(buildJsonObject {
                 put("t", "pong")
                 m["c"]?.let { put("c", it) }
                 put("s", System.currentTimeMillis())
@@ -549,7 +595,7 @@ class RoomServer(
             val room = getRoom(roomName)
             client.room = room
             room.clients.add(client)
-            client.ws.send(buildJsonObject {
+            client.peer.send(buildJsonObject {
                 put("t", "welcome")
                 put("you", memberInfo(client))
                 put("room", roomName)

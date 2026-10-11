@@ -38,7 +38,7 @@ object Host {
                 null
             }
         }
-        val name = (userName.ifBlank { "Ortak İzle" } + " · " + android.os.Build.MODEL).take(40)
+        val name = utf8Prefix(userName.trim().ifBlank { "Ortak İzle" } + " · " + android.os.Build.MODEL, 63)
         var lastError: Exception? = null
         for (p in PORTS) {
             val s = RoomServer(p, password.ifEmpty { null }, name, assets) { Log.i(TAG, it) }
@@ -122,6 +122,22 @@ object Host {
         }
         val order = listOf("Wi-Fi", "Tailscale", "Hotspot", "Kablolu ağ", "VPN", "Ağ")
         return out.distinctBy { it.second }.sortedBy { order.indexOf(it.first) }
+    }
+
+    // DNS-SD adı en fazla 63 bayt olabilir; harf ortasından bölmeden kısalt
+    private fun utf8Prefix(text: String, maxBytes: Int): String {
+        val sb = StringBuilder()
+        var bytes = 0
+        var i = 0
+        while (i < text.length) {
+            val cp = text.codePointAt(i)
+            val n = String(Character.toChars(cp)).toByteArray(Charsets.UTF_8).size
+            if (bytes + n > maxBytes) break
+            sb.appendCodePoint(cp)
+            bytes += n
+            i += Character.charCount(cp)
+        }
+        return sb.toString()
     }
 
     fun info(): JSONObject {

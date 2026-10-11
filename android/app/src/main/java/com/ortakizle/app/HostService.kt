@@ -43,20 +43,23 @@ class HostService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             Host.stop(this)
+            stopForeground(STOP_FOREGROUND_REMOVE)
             sendBroadcast(Intent(ACTION_STOPPED).setPackage(packageName))
             stopSelf()
             return START_NOT_STICKY
         }
-        if (!Host.hosting) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
+        // startForegroundService ile başlatıldığımız için her durumda önce ön plana geç
         createChannel()
-        val notif = build(summaryText())
+        val notif = build(if (Host.hosting) summaryText() else "Oda kapanıyor")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIF_ID, notif)
+        }
+        if (!Host.hosting) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
         }
         acquireLocks()
         handler.removeCallbacks(refresh)
@@ -108,7 +111,7 @@ class HostService : Service() {
             .setSmallIcon(R.drawable.ic_stat_room)
             .setContentTitle("Oda açık")
             .setContentText(text)
-            .setColor(0xFFD6A75B.toInt())
+            .setColor(0xFFFF6B3D.toInt())
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
