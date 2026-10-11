@@ -136,6 +136,7 @@
     joinedAt: null,
     rtt: null,
     lastNav: {}, // üye id -> zaman
+    watching: {}, // üye id -> izleme sayfasında mı (sitenin bildirdiği)
     connecting: false,
   };
 
@@ -343,6 +344,7 @@
         break;
       case 'nav':
         ui.lastNav[m.member.id] = Date.now();
+        ui.watching[m.member.id] = !!m.watching;
         render();
         if (m.watching && m.member.url) offerFollow(m.member);
         break;
@@ -691,7 +693,7 @@
     $('nowBtn').onclick = () => openUrl(watching.url);
   }
   const WATCH_RE = [/disneyplus\.com\/.*(play|video)\//, /(hbo)?max\.com\/.*(video\/watch|player)/, /tv\.apple\.com\/.*(episode|movie|show)/, /netflix\.com\/watch\//, /(primevideo|amazon)\.[^/]+\/.*(detail|watch|gp\/video)/, /youtube\.com\/watch/];
-  const isWatchish = (m) => WATCH_RE.some((r) => r.test(m.url));
+  const isWatchish = (m) => (m.id in ui.watching ? ui.watching[m.id] : WATCH_RE.some((r) => r.test(m.url)));
   setInterval(() => ui.view === 'lobby' && !$('nowCard').hidden && renderNow(), 1000);
 
   let platformsBuilt = false;

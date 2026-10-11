@@ -21,7 +21,8 @@
     [/primevideo\.com$|(^|\.)amazon\./, 'Prime Video'],
     [/youtube\.com$/, 'YouTube'],
   ];
-  const PLATFORM = (PLATFORMS.find(([r]) => r.test(HOST)) || [null, HOST])[1];
+  const KNOWN = PLATFORMS.find(([r]) => r.test(HOST));
+  const PLATFORM = (KNOWN || [null, HOST.replace(/^www\./, '')])[1];
 
   // Oynatıcı (izleme) sayfası adresleri
   const WATCH_PATTERNS = [
@@ -264,6 +265,8 @@
       setBuffering(false);
       if (!video) return;
       for (const e of EVENTS) video.addEventListener(e, onVideoEvent);
+      // Tanınmayan sitelerde (Exxen, TOD…) "izliyor" bilgisi videonun bulunmasına bağlı: yeniden bildir
+      if (!KNOWN) lastUrl = '';
       setTimeout(joinRoomPosition, 1200);
     }
 
@@ -517,6 +520,11 @@
       }
     }
 
+    // Bilinen platformlarda adrese, diğer sitelerde sayfada oynatılabilir video olmasına bakılır
+    function watchingNow() {
+      return isWatchUrl(location.href) || (!KNOWN && !!video);
+    }
+
     // ---------------------------------------------------------------- düzenli işler
     setInterval(() => {
       const v = pickVideo();
@@ -532,7 +540,7 @@
             url: location.href,
             title: cleanTitle(),
             platform: PLATFORM,
-            watching: isWatchUrl(location.href),
+            watching: watchingNow(),
           });
         }, 1500);
       }
@@ -548,7 +556,7 @@
         platform: PLATFORM,
         title: cleanTitle(),
         url: location.href,
-        watching: isWatchUrl(location.href),
+        watching: watchingNow(),
       };
       const key = JSON.stringify({ ...st, time: Math.floor(st.time) });
       if (key !== lastEngineStatus) {
