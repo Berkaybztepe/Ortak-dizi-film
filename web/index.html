@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#0b0b0c">
 <title>Ortak İzle</title>
 <link rel="preload" href="fonts/plus-jakarta-sans-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -31,6 +31,8 @@
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
     <symbol id="i-logo" viewBox="0 0 24 24"><path d="M6 3.8v16.4a1 1 0 0 0 1.5.86l13.2-8.2a1 1 0 0 0 0-1.72L7.5 2.94A1 1 0 0 0 6 3.8Z"/></symbol>
+    <symbol id="i-rew" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.6"/><path d="M4 3.5v5.1h5.1"/></symbol>
+    <symbol id="i-ffw" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.6"/><path d="M20 3.5v5.1h-5.1"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   </defs>
 </svg>
@@ -187,6 +189,11 @@
       <div class="tc-big" id="wTc">0:00<span class="of" id="wDur"></span></div>
       <span class="chip" id="wChip"><span class="dot"></span><span id="wChipTxt">Video bekleniyor</span></span>
       <div class="who" id="wWho"></div>
+    </div>
+    <div class="transport">
+      <button class="btn tskip" id="tBack" aria-label="10 saniye geri"><svg class="i"><use href="#i-rew"/></svg><b>10</b></button>
+      <button class="btn primary tplay" id="tPlay" aria-label="Oynat ya da durdur"><svg class="i"><use href="#i-play" id="tPlayIcon"/></svg></button>
+      <button class="btn tskip" id="tFwd" aria-label="10 saniye ileri"><svg class="i"><use href="#i-ffw"/></svg><b>10</b></button>
     </div>
     <div class="tools">
       <button class="btn" id="tResync"><svg class="i"><use href="#i-sync"/></svg>Senkronla</button>

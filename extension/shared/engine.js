@@ -511,6 +511,17 @@
         stage.clearTap();
         applyState(roomState, true);
         notify(`${nameOf(roomState.by)} ile senkronlandı: ${fmt(expectedTime(roomState))}`);
+      } else if (cmd === 'toggle') {
+        // Paneldeki oynat/durdur: video olayı tetiklenir, oda da senkronlanır
+        if (!video) return notify('Bu sayfada oynayan bir video yok.');
+        stage.clearTap();
+        if (video.paused) playVideo(() => stage.tap('Oynatmak için dokun', () => video.play()));
+        else video.pause();
+      } else if (cmd === 'seekBy') {
+        if (!video) return;
+        const d = Number(arg && arg.delta) || 0;
+        const max = Number.isFinite(video.duration) ? Math.max(0, video.duration - 1) : Infinity;
+        seekTo(Math.min(max, Math.max(0, video.currentTime + d)));
       } else if (cmd === 'countdown') {
         if (!video) return notify('Önce bir bölüm aç.');
         post({ t: 'countdown', time: video.currentTime });

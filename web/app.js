@@ -805,6 +805,11 @@
         return h('span', { style: `--pc:${colorOf(m.id)}` }, h('i'), `${mine ? 'Sen' : m.name} · ${where}`);
       })
     );
+    const playing = !!e?.hasVideo && !e.paused;
+    $('tPlayIcon').setAttribute('href', playing ? '#i-pause' : '#i-play');
+    $('tPlayIcon').parentNode.classList.toggle('play', !playing);
+    $('tPlay').setAttribute('aria-label', playing ? 'Durdur' : 'Oynat');
+    for (const id of ['tPlay', 'tBack', 'tFwd']) $(id).disabled = !e?.hasVideo;
     $('tCount').disabled = !e?.hasVideo || client.state !== 'bağlı';
     $('tResync').disabled = !e?.hasVideo;
     $('tCall').disabled = !e?.url || client.state !== 'bağlı';
@@ -923,6 +928,9 @@
   $('collapseBtn').addEventListener('click', () => native.call('setPanel', 'closed'));
   $('fOpen').addEventListener('click', () => native.call('setPanel', 'open'));
   $('tResync').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'resync' }));
+  $('tPlay').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'toggle' }));
+  $('tBack').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'seekBy', delta: -10 }));
+  $('tFwd').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'seekBy', delta: 10 }));
   $('tCount').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'countdown' }));
   $('tCall').addEventListener('click', () => {
     if (!ui.engine?.url) return;

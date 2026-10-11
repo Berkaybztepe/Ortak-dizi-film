@@ -124,6 +124,21 @@ try {
   a = await vs(A.player); b = await vs(B.player);
   !a.paused && !b.paused && Math.abs(a.t - b.t) < 0.5 ? pass(`Geri sayım sonrası birlikte (A ${a.t}, B ${b.t})`) : fail(`Geri sayım sonrası ${JSON.stringify(a)} ${JSON.stringify(b)}`);
 
+  // Paneldeki oynat/durdur ve 10 sn atlama düğmeleri ikisinde birden çalışmalı
+  await B.ui.locator('#tPlay').click();
+  await sleep(1500);
+  a = await vs(A.player); b = await vs(B.player);
+  a.paused && b.paused ? pass(`Paneldeki durdur düğmesi ikisini de durdurdu (A ${a.t}, B ${b.t})`) : fail(`Panel durdur: ${JSON.stringify(a)} ${JSON.stringify(b)}`);
+  const before10 = b.t;
+  await B.ui.locator('#tFwd').click();
+  await sleep(1500);
+  a = await vs(A.player); b = await vs(B.player);
+  Math.abs(b.t - (before10 + 10)) < 0.6 && Math.abs(a.t - b.t) < 0.3 ? pass(`10 sn ileri ikisinde birden (A ${a.t}, B ${b.t})`) : fail(`10 sn ileri: ${JSON.stringify(a)} ${JSON.stringify(b)}`);
+  await B.ui.locator('#tPlay').click();
+  await sleep(1500);
+  a = await vs(A.player); b = await vs(B.player);
+  !a.paused && !b.paused ? pass('Paneldeki oynat düğmesi ikisini de oynattı') : fail(`Panel oynat: ${JSON.stringify(a)} ${JSON.stringify(b)}`);
+
   await B.ui.locator('#chatInput').fill('çay hazır');
   await B.ui.locator('#chatInput').press('Enter');
   await sleep(700);

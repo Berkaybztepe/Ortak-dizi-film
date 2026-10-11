@@ -194,6 +194,10 @@ class MainActivity : ComponentActivity() {
             allowFileAccess = false
             allowContentAccess = false
             textZoom = 100
+            // Panel parmakla büyütülüp küçültülmesin
+            setSupportZoom(false)
+            builtInZoomControls = false
+            displayZoomControls = false
             // Aynı Wi-Fi'daki odaya ws:// ile bağlanabilmek için
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         }
