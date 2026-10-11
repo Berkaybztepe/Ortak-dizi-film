@@ -23,6 +23,8 @@ const SERVER_NAME = (process.env.ODA_ADI || os.hostname() || 'Ortak İzle').slic
 const REACTIONS = ['😂', '😮', '😱', '❤️', '👏', '🔥', '😢', '👀'];
 const KINDS = ['app', 'eklenti', 'web'];
 const COUNTDOWN_MS = 3500;
+// Planlı başlatma: istemci "şu sunucu anında başla" diyebilir (en fazla bu kadar ileri)
+const MAX_START_LEAD_MS = 2000;
 
 // ---------------------------------------------------------------------------
 // Minimal WebSocket (RFC 6455) — sadece metin mesajları, ping/pong ve kapanış.
@@ -161,6 +163,8 @@ function getRoom(name) {
       // Son bilinen oynatma durumu: `at` sunucu saati (ms) — oynarken
       // güncel konum = time + (şimdi - at) / 1000
       state: { paused: true, time: 0, at: Date.now(), url: null, by: null },
+      // Kilit açıkken bölümü yalnızca yönetici (odayı açan) seçer; diğerleri onu takip eder
+      lock: true,
     };
     rooms.set(name, room);
   }
@@ -176,7 +180,39 @@ function memberInfo(c) {
     platform: c.platform,
     kind: c.kind,
     buffering: !!c.buffering,
+    admin: !!c.admin,
+    watching: !!c.watching,
   };
+}
+
+// İstemcinin bildirdiği ölçüm anı (sunucu saatiyle). Mesaj yolda gecikse de konum o ana göre
+// hesaplanır; böylece ağ gecikmesi senkrona eklenmez. Mantıksızsa şimdiki zaman kullanılır.
+function clientAt(v, now, maxFuture = 500) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return now;
+  if (v > now + maxFuture || v < now - 5000) return now;
+  return Math.round(v);
+}
+
+function hostOf(u) {
+  try {
+    return new URL(u).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+// İzleyen biri bölümden ya da odadan çıktı: oynuyorsa video herkeste dursun
+function pauseForAbsence(room, client, reason, url = client.url) {
+  const st = room.state;
+  if (st.paused || !st.url) return false;
+  if (hostOf(url) !== hostOf(st.url)) return false;
+  const now = Date.now();
+  const time = st.time + Math.max(0, now - st.at) / 1000;
+  room.state = { paused: true, time, at: now, url: st.url, by: null };
+  if (st.rel) room.state.rel = true;
+  broadcast(room, { t: 'sync', action: 'pause', ...room.state, from: client.id, name: client.name, reason }, client);
+  addSystemMessage(room, `${client.name} ${reason === 'left' ? 'odadan ayrıldı' : 'bölümden çıktı'}, video durduruldu.`);
+  return true;
 }
 
 function broadcast(room, msg, except) {
@@ -245,7 +281,10 @@ function handle(client, raw) {
     client.name = cleanStr(m.name, 30).trim() || 'Misafir';
     client.kind = KINDS.includes(m.kind) ? m.kind : 'eklenti';
     client.buffering = false;
+    client.watching = false;
     client.room = getRoom(roomName);
+    // Yönetici: odayı açan cihaz (sunucuya bu cihazın içinden bağlanan ilk kişi)
+    client.admin = !!client.local && ![...client.room.clients].some((c) => c.admin);
     client.room.clients.add(client);
     client.ws.send({
       t: 'welcome',
@@ -254,6 +293,7 @@ function handle(client, raw) {
       server: SERVER_NAME,
       members: [...client.room.clients].map(memberInfo),
       state: client.room.state,
+      lock: client.room.lock,
       history: client.room.history,
       now: Date.now(),
     });
@@ -295,7 +335,8 @@ function handle(client, raw) {
       room.state = {
         paused: action === 'pause' ? true : action === 'play' ? false : !!m.paused,
         time: cleanNum(m.time),
-        at: now,
+        // Oynatma planlı başlatılabilir (herkes aynı anda başlasın diye birkaç yüz ms sonrası)
+        at: clientAt(m.at, now, action === 'play' ? MAX_START_LEAD_MS : 500),
         url: client.url,
         by: client.id,
       };
@@ -317,11 +358,12 @@ function handle(client, raw) {
         ...room.state,
         paused: !!m.paused,
         time: cleanNum(m.time),
-        at: Date.now(),
+        at: clientAt(m.at, Date.now()),
         url: client.url,
         by: client.id,
       };
       if (m.rel) room.state.rel = true;
+      else delete room.state.rel;
       broadcast(room, { t: 'tick', ...room.state, from: client.id, cs: room.seq || 0 }, client);
       return;
     }
@@ -329,10 +371,28 @@ function handle(client, raw) {
     // Kullanıcı bir dizi/film sayfası açtı
     case 'nav': {
       const url = cleanUrl(m.url);
+      const wasWatching = client.watching;
+      const oldUrl = client.url;
+      // Bölüm değişince eski "yükleniyor" durumu takılı kalmasın
+      if (client.buffering) {
+        client.buffering = false;
+        broadcast(room, { t: 'buffer', on: false, member: memberInfo(client) }, client);
+      }
+      client.watching = !!m.watching && !!url;
       client.url = url;
       client.title = cleanStr(m.title, 200);
       client.platform = cleanStr(m.platform, 30);
-      broadcast(room, { t: 'nav', member: memberInfo(client), watching: !!m.watching }, client);
+      broadcast(room, { t: 'nav', member: memberInfo(client), watching: client.watching }, client);
+      if (wasWatching && !client.watching) pauseForAbsence(room, client, 'exit', oldUrl);
+      return;
+    }
+
+    // Yönetici kilidi: açıkken bölümü yalnızca yönetici seçer
+    case 'lock': {
+      if (!client.admin) return;
+      room.lock = !!m.on;
+      broadcast(room, { t: 'lock', on: room.lock });
+      addSystemMessage(room, room.lock ? `Bölümü yalnızca ${client.name} seçebilir.` : 'Artık herkes bölüm seçebilir.');
       return;
     }
 
@@ -356,6 +416,13 @@ function handle(client, raw) {
     case 'react': {
       if (!REACTIONS.includes(m.emoji)) return;
       broadcast(room, { t: 'react', emoji: m.emoji, from: client.id, name: client.name }, client);
+      return;
+    }
+
+    // İzleyenin oda durumuna göre farkı (sn): paneldeki "Senkron" yazısı gerçeğe dayansın
+    case 'drift': {
+      const err = typeof m.err === 'number' && Number.isFinite(m.err) && Math.abs(m.err) < 86400 ? Math.round(m.err * 100) / 100 : null;
+      broadcast(room, { t: 'drift', err, from: client.id }, client);
       return;
     }
 
@@ -400,7 +467,15 @@ function leave(client) {
   client.room = null;
   if (room.state.by === client.id) room.state.by = null;
   broadcast(room, { t: 'member-leave', member: memberInfo(client) });
-  addSystemMessage(room, `${client.name} odadan ayrıldı.`);
+  if (!(client.watching && pauseForAbsence(room, client, 'left'))) addSystemMessage(room, `${client.name} odadan ayrıldı.`);
+  // Yönetici çıktıysa bu cihazdaki sıradaki kişi yönetici olur
+  if (client.admin) {
+    const next = [...room.clients].find((c) => c.local);
+    if (next) {
+      next.admin = true;
+      broadcast(room, { t: 'nav', member: memberInfo(next), watching: !!next.watching });
+    }
+  }
   log(`[${room.name}] - ${client.name}`);
   if (room.clients.size === 0) {
     // Boş odayı bir süre sonra temizle (yenileme sırasında geçmiş kaybolmasın)
@@ -475,7 +550,9 @@ server.on('upgrade', (req, sock) => {
       `Sec-WebSocket-Accept: ${accept}\r\n\r\n`
   );
   const ws = new Socket(sock);
-  const client = { id: crypto.randomBytes(4).toString('hex'), ws, room: null, name: '', url: null };
+  const addr = sock.remoteAddress || '';
+  const local = /^(127\.|::1$|::ffff:127\.)/.test(addr);
+  const client = { id: crypto.randomBytes(4).toString('hex'), ws, room: null, name: '', url: null, local };
   ws.onmessage = (text) => handle(client, text);
   ws.onclose = () => leave(client);
 });

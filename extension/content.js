@@ -54,6 +54,7 @@
 
   function post(m) {
     if (m.t === 'engine') return overlay && overlay.engine(m);
+    if (m.t === 'notice') return overlay && overlay.toast(m.text);
     if ((m.t === 'sync' || m.t === 'tick') && overlay) {
       overlay.localState({ paused: m.t === 'sync' ? m.action === 'pause' || (m.action === 'seek' && m.paused) : false, time: m.time, at: Date.now(), url: location.href, by: null });
     }

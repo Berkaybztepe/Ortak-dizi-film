@@ -33,7 +33,7 @@ const srv = await startServer(PORT, { ODA_KODU: TEST_CODE, ARACI: broker.ws });
 await sleep(800);
 const browser = await chromium.launch(chromeOptions({ args: ['--no-proxy-server', '--autoplay-policy=no-user-gesture-required'] }));
 
-const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing']);
+const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing', 'drift', 'notice']);
 async function app(label, w, h) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h } });
   await routeFakeDisney(ctx, VIDEO);
@@ -148,11 +148,11 @@ try {
   await B.player.waitForFunction(() => window.v && v.readyState >= 1);
   await sleep(2500);
   // Panelde gerçek dakika görünmeli (video zamanı değil)
-  await A.player.evaluate(() => { v.currentTime = 30; });
+  await A.player.evaluate(() => { window.tap && tap(); v.currentTime = 30; });
   await sleep(2500);
   const tcA = await A.ui.locator('#wTc').innerText().catch(() => '');
   /17:1/.test(tcA) ? pass(`Panelde gerçek dakika görünüyor: ${tcA.split('\n')[0]} (video zamanı 0:30 değil)`) : fail('Paneldeki dakika: ' + tcA);
-  await A.player.evaluate(() => v.play());
+  await A.player.evaluate(() => (window.tap && tap(), v.play()));
   const aligned = await waitFor(async () => {
     const a = await ctA(), b = await ctB();
     return !b.paused && Math.abs(a.ct - b.ct) < 1.5 ? [a, b] : null;
@@ -161,14 +161,14 @@ try {
     ? pass(`İki cihaz aynı dakikada: A ${aligned[0].ct}, B ${aligned[1].ct} (video zamanları ${aligned[0].vt} / ${aligned[1].vt})`)
     : fail('Aynı dakikaya gelmedi: ' + JSON.stringify([await ctA(), await ctB()]));
   if (process.env.DBG) { await B.player.evaluate(() => (window.__oiDebug = 1)); B.player.on('console', (m) => console.log('      Bkonsol', m.text())); }
-  await B.player.evaluate(() => { v.currentTime = 400; }); // B 1300. dakikaya sarar
+  await B.player.evaluate(() => { window.tap && tap(); v.currentTime = 400; }); // B 1300. dakikaya sarar
   if (process.env.DBG) for (let i = 0; i < 6; i++) { await sleep(500); console.log('      B:', JSON.stringify(await B.player.evaluate(() => ({ t: v.currentTime, seeking: v.seeking, rs: v.readyState, paused: v.paused })))); }
   const seekOk = await waitFor(async () => {
     const a = await ctA();
     return Math.abs(a.ct - 1300) < 2 ? a : null;
   }, 8000);
   seekOk ? pass(`B 21:40'a sardı, A da 21:40'a geldi (A video zamanı ${seekOk.vt})`) : fail('Sarma dakikası tutmadı: ' + JSON.stringify(await ctA()));
-  await B.player.evaluate(() => v.pause());
+  await B.player.evaluate(() => (window.tap && tap(), v.pause()));
   const pausedSame = await waitFor(async () => {
     const a = await ctA(), b = await ctB();
     return a.paused && Math.abs(a.ct - b.ct) < 0.5 ? [a, b] : null;
@@ -183,28 +183,28 @@ try {
   await B.player.waitForFunction(() => window.v && v.readyState >= 1);
   await sleep(2500);
   // Hizalama: ikisi de durmuşken kendi videosunu aynı sahneye getiriyor (iç zamanlar farklı)
-  await A.player.evaluate(() => v.pause());
-  await B.player.evaluate(() => v.pause());
+  await A.player.evaluate(() => (window.tap && tap(), v.pause()));
+  await B.player.evaluate(() => (window.tap && tap(), v.pause()));
   await sleep(800);
-  await A.player.evaluate(() => { v.currentTime = 30; });
-  await B.player.evaluate(() => { v.currentTime = 80; });
+  await A.player.evaluate(() => { window.tap && tap(); v.currentTime = 30; });
+  await B.player.evaluate(() => { window.tap && tap(); v.currentTime = 80; });
   await sleep(2000);
   const sa = await vt(A.player), sb = await vt(B.player);
   Math.abs(sa.t - 30) < 1 && Math.abs(sb.t - 80) < 1 ? pass('Güvenli mod: durmuşken yapılan hizalama sarmaları karşıya taşmadı') : fail(`Hizalama karıştı: A ${sa.t} B ${sb.t}`);
   const tcU = await A.ui.locator('#wTc').innerText().catch(() => '');
   /–:––/.test(tcU) ? pass('Dakika okunamayınca panel yanlış dakika göstermiyor (–:––)') : fail('Panel: ' + tcU);
-  await A.player.evaluate(() => v.play());
+  await A.player.evaluate(() => (window.tap && tap(), v.play()));
   const both = await waitFor(async () => (!(await vt(B.player)).paused ? true : null), 8000);
   let b = await vt(B.player);
   both && b.t > 75 && b.t < 90 ? pass(`Güvenli mod: A oynattı, B kendi yerinden oynadı, yanlış yere atlamadı (B ${b.t})`) : fail('Güvenli mod oynat: ' + JSON.stringify(b));
   await sleep(1500);
   const before = await vt(B.player);
-  await A.player.evaluate(() => { v.currentTime = v.currentTime + 20; });
+  await A.player.evaluate(() => { window.tap && tap(); v.currentTime = v.currentTime + 20; });
   await sleep(2500);
   b = await vt(B.player);
   const jump = b.t - before.t;
   jump > 19 && jump < 25 ? pass(`Güvenli mod: A 20 sn ileri sardı, B de ~20 sn ileri gitti (${jump.toFixed(1)} sn)`) : fail(`Güvenli mod sarma: B ${before.t} → ${b.t}`);
-  await A.player.evaluate(() => v.pause());
+  await A.player.evaluate(() => (window.tap && tap(), v.pause()));
   const pz = await waitFor(async () => ((await vt(B.player)).paused ? true : null), 8000);
   pz ? pass('Güvenli mod: A durdurdu, B de durdu') : fail('Güvenli mod durdur');
   const drift = await waitFor(async () => {

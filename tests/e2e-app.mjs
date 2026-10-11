@@ -30,7 +30,7 @@ const srv = await startServer(PORT, { ODA_KODU: TEST_CODE, ARACI: broker.ws });
 await sleep(800);
 const browser = await chromium.launch(chromeOptions({ args: ['--no-proxy-server', '--autoplay-policy=no-user-gesture-required'] }));
 
-const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing']);
+const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing', 'drift', 'notice']);
 async function app(label, w, h) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h } });
   await routeFakeDisney(ctx, VIDEO);
@@ -108,7 +108,7 @@ try {
   const watchVisible = await B.ui.locator('#vWatch').isVisible();
   watchVisible ? pass('B izleme paneline geçti') : fail('İzleme paneli görünmüyor');
 
-  await A.player.evaluate(() => { v.currentTime = 20; v.play(); });
+  await A.player.evaluate(() => { window.tap && tap(); v.currentTime = 20; v.play(); });
   await sleep(2500);
   let a = await vs(A.player), b = await vs(B.player);
   !b.paused && Math.abs(a.t - b.t) < 1.5 ? pass(`Uygulamada oynat senkron (A ${a.t}, B ${b.t})`) : fail(`Oynat: ${JSON.stringify(a)} ${JSON.stringify(b)}`);

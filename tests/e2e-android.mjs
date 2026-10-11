@@ -181,12 +181,12 @@ const st2 = await player.evaluate(() => ({ paused: v.paused, t: v.currentTime })
 paused && Math.abs(st2.t - t2) < 0.5 ? pass(`Durdu: tablet ${st2.t.toFixed(2)} / kardeş ${t2.toFixed(2)}`) : fail('Durma: ' + JSON.stringify(st2) + ' beklenen ' + t2);
 
 step('Tablette sarma → kardeşe gitmeli');
-await player.evaluate(() => { v.currentTime = 300; });
+await player.evaluate(() => { window.tap && tap(); v.currentTime = 300; });
 const seek = await waitFor(() => events.find((m) => m.t === 'sync' && Math.abs(m.time - 300) < 1), 90000, 500);
 seek ? pass('Tabletteki sarma kardeşe ulaştı (5:00)') : fail('Sarma ulaşmadı');
 
 step('Tablette oynat → kardeşe gitmeli');
-await player.evaluate(() => v.play());
+await player.evaluate(() => (window.tap && tap(), v.play()));
 const play2 = await waitFor(() => events.find((m) => m.t === 'sync' && m.paused === false), 90000, 500);
 play2 ? pass('Tabletteki oynat kardeşe ulaştı') : fail('Oynat ulaşmadı');
 const tick = await waitFor(() => events.find((m) => m.t === 'tick'), 90000, 500);

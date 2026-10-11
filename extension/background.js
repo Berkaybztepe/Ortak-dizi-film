@@ -63,7 +63,7 @@ api.runtime.onConnect.addListener((port) => {
       port.postMessage(withSettings(client.status()));
       return;
     }
-    if (['chat', 'sync', 'tick', 'nav', 'invite', 'react', 'typing', 'buffer', 'countdown'].includes(m.t)) {
+    if (['chat', 'sync', 'tick', 'nav', 'invite', 'react', 'typing', 'buffer', 'countdown', 'drift'].includes(m.t)) {
       client.send(m);
       // Kendi hareketimizi aynı tarayıcıdaki diğer sekmelere de bildir
       if (m.t === 'sync' || m.t === 'tick') {

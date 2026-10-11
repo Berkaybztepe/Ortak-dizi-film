@@ -37,6 +37,8 @@ private const val MAX_TEXT = 1000
 private val REACTIONS = listOf("😂", "😮", "😱", "❤️", "👏", "🔥", "😢", "👀")
 private val KINDS = listOf("app", "eklenti", "web")
 private const val COUNTDOWN_MS = 3500L
+// Planlı başlatma: istemci "şu sunucu anında başla" diyebilir (en fazla bu kadar ileri)
+private const val MAX_START_LEAD_MS = 2000L
 private const val PING_INTERVAL_MS = 30_000L
 private const val EMPTY_ROOM_TTL_MS = 30 * 60 * 1000L
 private const val HTTP_IDLE_TIMEOUT_MS = 30_000
@@ -305,6 +307,8 @@ class RoomServer(
             return
         }
         val client = Client(newId())
+        // Bu cihazın içinden bağlanan (odayı açan) kişi yönetici olabilir
+        client.local = sock.inetAddress?.isLoopbackAddress == true
         val conn = WsConn(sock, out) { synchronized(lock) { leave(client) } }
         client.peer = conn
         wsConns.add(conn)
@@ -501,6 +505,8 @@ class RoomServer(
         val history = ArrayList<JsonObject>()
         var seq = 0L // sohbet sıra numarası
         var state = PlayState(true, 0.0, System.currentTimeMillis(), null, null)
+        // Kilit açıkken bölümü yalnızca yönetici (odayı açan) seçer; diğerleri onu takip eder
+        var lock = true
     }
 
     private inner class Client(val id: String) {
@@ -513,6 +519,9 @@ class RoomServer(
         var platform: String? = null
         var kind: String? = null
         var buffering = false
+        var watching = false
+        var admin = false
+        var local = false
     }
 
     private fun memberInfo(c: Client): JsonObject = buildJsonObject {
@@ -523,6 +532,42 @@ class RoomServer(
         c.platform?.let { put("platform", it) }
         c.kind?.let { put("kind", it) }
         put("buffering", c.buffering)
+        put("admin", c.admin)
+        put("watching", c.watching)
+    }
+
+    // İstemcinin bildirdiği ölçüm anı (sunucu saatiyle). Mesaj yolda gecikse de konum o ana göre
+    // hesaplanır; böylece ağ gecikmesi senkrona eklenmez. Mantıksızsa şimdiki zaman kullanılır.
+    private fun clientAt(v: JsonElement?, now: Long, maxFuture: Long = 500): Long {
+        val x = jsNumber(v) ?: return now
+        if (!x.isFinite() || x > now + maxFuture || x < now - 5000) return now
+        return Math.round(x)
+    }
+
+    private fun hostOf(u: String?): String = try {
+        java.net.URI(u ?: "").host?.removePrefix("www.") ?: ""
+    } catch (_: Exception) {
+        ""
+    }
+
+    // İzleyen biri bölümden ya da odadan çıktı: oynuyorsa video herkeste dursun
+    private fun pauseForAbsence(room: Room, client: Client, reason: String, url: String?): Boolean {
+        val st = room.state
+        if (st.paused || st.url == null) return false
+        if (hostOf(url) != hostOf(st.url)) return false
+        val now = System.currentTimeMillis()
+        val time = st.time + maxOf(0L, now - st.at) / 1000.0
+        room.state = PlayState(true, time, now, st.url, null, st.rel)
+        broadcast(room, buildJsonObject {
+            put("t", "sync")
+            put("action", "pause")
+            room.state.putInto(this)
+            put("from", client.id)
+            put("name", client.name)
+            put("reason", reason)
+        }, client)
+        addSystemMessage(room, "${client.name} ${if (reason == "left") "odadan ayrıldı" else "bölümden çıktı"}, video durduruldu.")
+        return true
     }
 
     private fun getRoom(roomName: String): Room = rooms.getOrPut(roomName) { Room(roomName) }
@@ -601,8 +646,11 @@ class RoomServer(
             client.name = jsTrim(cleanStr(m["name"], 30)).ifEmpty { "Misafir" }
             client.kind = jsString(m["kind"])?.takeIf { it in KINDS } ?: "eklenti"
             client.buffering = false
+            client.watching = false
             val room = getRoom(roomName)
             client.room = room
+            // Yönetici: odayı açan cihaz (sunucuya bu cihazın içinden bağlanan ilk kişi)
+            client.admin = client.local && room.clients.none { it.admin }
             room.clients.add(client)
             client.peer.send(buildJsonObject {
                 put("t", "welcome")
@@ -611,6 +659,7 @@ class RoomServer(
                 put("server", name)
                 put("members", JsonArray(room.clients.map { memberInfo(it) }))
                 put("state", room.state.toJson())
+                put("lock", room.lock)
                 put("history", JsonArray(room.history.toList()))
                 put("now", System.currentTimeMillis())
             })
@@ -673,7 +722,8 @@ class RoomServer(
                         else -> truthy(m["paused"])
                     },
                     time = cleanNum(m["time"]),
-                    at = System.currentTimeMillis(),
+                    // Oynatma planlı başlatılabilir (herkes aynı anda başlasın diye birkaç yüz ms sonrası)
+                    at = clientAt(m["at"], System.currentTimeMillis(), if (action == "play") MAX_START_LEAD_MS else 500L),
                     url = client.url,
                     by = client.id,
                     rel = truthy(m["rel"]),
@@ -694,7 +744,7 @@ class RoomServer(
                 // Sadece son kumanda eden kişinin tick'i durumu belirler
                 val by = room.state.by
                 if (!by.isNullOrEmpty() && by != client.id) return
-                room.state = PlayState(truthy(m["paused"]), cleanNum(m["time"]), System.currentTimeMillis(), client.url, client.id, truthy(m["rel"]))
+                room.state = PlayState(truthy(m["paused"]), cleanNum(m["time"]), clientAt(m["at"], System.currentTimeMillis()), client.url, client.id, truthy(m["rel"]))
                 broadcast(room, buildJsonObject {
                     put("t", "tick")
                     room.state.putInto(this)
@@ -705,14 +755,39 @@ class RoomServer(
 
             // Kullanıcı bir dizi/film sayfası açtı
             "nav" -> {
-                client.url = cleanUrl(m["url"])
+                val url = cleanUrl(m["url"])
+                val wasWatching = client.watching
+                val oldUrl = client.url
+                // Bölüm değişince eski "yükleniyor" durumu takılı kalmasın
+                if (client.buffering) {
+                    client.buffering = false
+                    broadcast(room, buildJsonObject {
+                        put("t", "buffer")
+                        put("on", false)
+                        put("member", memberInfo(client))
+                    }, client)
+                }
+                client.watching = truthy(m["watching"]) && url != null
+                client.url = url
                 client.title = cleanStr(m["title"], 200)
                 client.platform = cleanStr(m["platform"], 30)
                 broadcast(room, buildJsonObject {
                     put("t", "nav")
                     put("member", memberInfo(client))
-                    put("watching", truthy(m["watching"]))
+                    put("watching", client.watching)
                 }, client)
+                if (wasWatching && !client.watching) pauseForAbsence(room, client, "exit", oldUrl)
+            }
+
+            // Yönetici kilidi: açıkken bölümü yalnızca yönetici seçer
+            "lock" -> {
+                if (!client.admin) return
+                room.lock = truthy(m["on"])
+                broadcast(room, buildJsonObject {
+                    put("t", "lock")
+                    put("on", room.lock)
+                })
+                addSystemMessage(room, if (room.lock) "Bölümü yalnızca ${client.name} seçebilir." else "Artık herkes bölüm seçebilir.")
             }
 
             // Diğerlerinin tarayıcısına "buraya gel" isteği
@@ -737,6 +812,16 @@ class RoomServer(
                     put("emoji", emoji)
                     put("from", client.id)
                     put("name", client.name)
+                }, client)
+            }
+
+            // İzleyenin oda durumuna göre farkı (sn): paneldeki "Senkron" yazısı gerçeğe dayansın
+            "drift" -> {
+                val err = jsNumber(m["err"])?.takeIf { it.isFinite() && kotlin.math.abs(it) < 86400 }
+                broadcast(room, buildJsonObject {
+                    put("t", "drift")
+                    if (err != null) put("err", numJson(Math.round(err * 100) / 100.0)) else put("err", JsonNull)
+                    put("from", client.id)
                 }, client)
             }
 
@@ -792,7 +877,18 @@ class RoomServer(
             put("t", "member-leave")
             put("member", memberInfo(client))
         })
-        addSystemMessage(room, "${client.name} odadan ayrıldı.")
+        if (!(client.watching && pauseForAbsence(room, client, "left", client.url))) addSystemMessage(room, "${client.name} odadan ayrıldı.")
+        // Yönetici çıktıysa bu cihazdaki sıradaki kişi yönetici olur
+        if (client.admin) {
+            room.clients.firstOrNull { it.local }?.let { next ->
+                next.admin = true
+                broadcast(room, buildJsonObject {
+                    put("t", "nav")
+                    put("member", memberInfo(next))
+                    put("watching", next.watching)
+                })
+            }
+        }
         log("[${room.name}] - ${client.name}")
         if (room.clients.isEmpty()) {
             // Boş odayı bir süre sonra temizle (yenileme sırasında geçmiş kaybolmasın)

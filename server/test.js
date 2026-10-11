@@ -124,6 +124,12 @@ function client(port) {
   a.send({ t: 'tick', time: 70, paused: false });
   assert.strictEqual((await b.next((m) => m.t === 'tick')).time, 70);
 
+  // Fark bildirimi diğerlerine gider
+  b.send({ t: 'drift', err: 0.1234 });
+  assert.strictEqual((await a.next((m) => m.t === 'drift')).err, 0.12);
+  b.send({ t: 'drift', err: 'x' });
+  assert.strictEqual((await a.next((m) => m.t === 'drift')).err, null);
+
   // Davet
   b.send({ t: 'invite', url: 'https://play.hbomax.com/video/watch/x/y', title: 'The Last of Us' });
   assert.strictEqual((await a.next((m) => m.t === 'invite')).name, 'Kardeş');
@@ -156,15 +162,71 @@ function client(port) {
   assert.strictEqual(cb.time, 42);
   assert.ok(ca.at - before > 2000 && ca.at - before < 6000);
 
+  // Yönetici: odayı açan cihaz (sunucuya bu cihazdan ilk bağlanan); kilidi yalnızca o değiştirir
+  if (!RELAY_CODE) {
+    assert.strictEqual(wa.you.admin, true);
+    assert.strictEqual(wb.you.admin, false);
+  }
+  assert.strictEqual(wa.lock, true);
+  b.send({ t: 'lock', on: false });
+  await a.none((m) => m.t === 'lock');
+  if (!RELAY_CODE) {
+    a.send({ t: 'lock', on: false });
+    assert.strictEqual((await b.next((m) => m.t === 'lock')).on, false);
+    a.send({ t: 'lock', on: true });
+    assert.strictEqual((await b.next((m) => m.t === 'lock')).on, true);
+  }
+
+  // Gönderenin ölçüm anı korunur (ağ gecikmesi senkrona eklenmez); saçma değerler yok sayılır
+  const past = Date.now() - 800;
+  a.send({ t: 'sync', action: 'pause', time: 50, at: past });
+  assert.strictEqual((await b.next((m) => m.t === 'sync' && m.time === 50)).at, past);
+  const t0 = Date.now();
+  a.send({ t: 'sync', action: 'pause', time: 51, at: past - 60000 });
+  assert.ok((await b.next((m) => m.t === 'sync' && m.time === 51)).at >= t0 - 50);
+  // Planlı başlatma: birkaç yüz ms sonrası kabul edilir, çok ileri tarih edilmez
+  const fut = Date.now() + 700;
+  a.send({ t: 'sync', action: 'play', time: 52, at: fut });
+  assert.strictEqual((await b.next((m) => m.t === 'sync' && m.time === 52)).at, fut);
+  a.send({ t: 'sync', action: 'play', time: 53, at: Date.now() + 60000 });
+  assert.ok((await b.next((m) => m.t === 'sync' && m.time === 53)).at < Date.now() + 1000);
+  const tk = Date.now() - 300;
+  a.send({ t: 'tick', time: 54, paused: false, at: tk });
+  assert.strictEqual((await b.next((m) => m.t === 'tick' && m.time === 54)).at, tk);
+
+  // İzleyen biri bölümden çıkınca video herkeste durur
+  b.send({ t: 'nav', url: 'https://www.disneyplus.com/play/abc', title: 'Loki', platform: 'Disney+', watching: true });
+  await a.next((m) => m.t === 'nav' && m.member.name === 'Kardeş');
+  a.send({ t: 'nav', url: 'https://www.disneyplus.com/browse', title: '', platform: 'Disney+', watching: false });
+  const ex = await b.next((m) => m.t === 'sync' && m.reason);
+  assert.deepStrictEqual([ex.reason, ex.paused, ex.name, ex.action], ['exit', true, 'Berkay', 'pause']);
+  assert.ok(ex.time >= 54);
+  await a.none((m) => m.t === 'sync' && m.reason);
+  // Durmuşken çıkmak bir şey değiştirmez
+  a.send({ t: 'nav', url: 'https://www.disneyplus.com/play/abc', title: 'Loki', platform: 'Disney+', watching: true });
+  a.send({ t: 'nav', url: 'https://www.disneyplus.com/browse', title: '', platform: 'Disney+', watching: false });
+  await b.none((m) => m.t === 'sync' && m.reason);
+
+  // Bölüm değişince takılı kalmış "yükleniyor" temizlenir
+  b.send({ t: 'buffer', on: true });
+  assert.strictEqual((await a.next((m) => m.t === 'buffer')).on, true);
+  b.send({ t: 'nav', url: 'https://www.disneyplus.com/play/def', title: 'Loki 2', platform: 'Disney+', watching: true });
+  const bo = await a.next((m) => m.t === 'buffer');
+  assert.deepStrictEqual([bo.on, bo.member.buffering], [false, false]);
+  assert.strictEqual((await a.next((m) => m.t === 'nav' && m.member.title === 'Loki 2')).member.watching, true);
+
   // Geçersiz URL kabul edilmez
   b.send({ t: 'nav', url: 'javascript:alert(1)', watching: true });
   assert.strictEqual((await a.next((m) => m.t === 'nav')).member.url, null);
 
-  // Ayrılınca diğeri haber alır, kumanda boşa düşer
-  a.send({ t: 'sync', action: 'pause', time: 61.5 });
-  await b.next((m) => m.t === 'sync');
+  // Ayrılınca diğeri haber alır, izlerken ayrıldıysa video durur, kumanda boşa düşer
+  a.send({ t: 'nav', url: 'https://www.disneyplus.com/play/abc', title: 'Loki', platform: 'Disney+', watching: true });
+  a.send({ t: 'sync', action: 'play', time: 61.5 });
+  await b.next((m) => m.t === 'sync' && m.time === 61.5);
   a.close();
   assert.strictEqual((await b.next((m) => m.t === 'member-leave')).member.name, 'Berkay');
+  const lf = await b.next((m) => m.t === 'sync' && m.reason);
+  assert.deepStrictEqual([lf.reason, lf.paused, lf.by], ['left', true, null]);
   b.send({ t: 'tick', time: 99, paused: false });
 
   // Sonradan katılan güncel durumu alır

@@ -32,7 +32,7 @@ const srv = await startServer(PORT, { ODA_KODU: TEST_CODE, ARACI: broker.ws });
 await sleep(800);
 const browser = await chromium.launch(chromeOptions({ args: ['--no-proxy-server', '--autoplay-policy=no-user-gesture-required'] }));
 
-const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing']);
+const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing', 'drift', 'notice']);
 async function app(label, w, h) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h } });
   await routeFakeDisney(ctx, VIDEO);
@@ -109,14 +109,14 @@ try {
   await A.player.waitForFunction(() => window.v && v.readyState >= 1);
   await B.player.waitForFunction(() => window.v && v.readyState >= 1);
   await sleep(2500);
-  await A.player.evaluate(() => { v.currentTime = 40; v.play(); });
+  await A.player.evaluate(() => { window.tap && tap(); v.currentTime = 40; v.play(); });
   (await waitFor(() => both(A, B, (a, b) => !b.paused && Math.abs(a.t - b.t) < 1.5), 8000))
     ? pass('Farklı adreslerle açılmış aynı bölüm yine senkron')
     : fail('Farklı adres: ' + JSON.stringify([await vs(A.player), await vs(B.player)]));
 
   // İnatçı oynatıcı: B'nin oynatıcısı uzaktan gelen "durdur"u bir kez geri alıyor
   await B.player.evaluate(() => (window.__resist = 1));
-  await A.player.evaluate(() => v.pause());
+  await A.player.evaluate(() => (window.tap && tap(), v.pause()));
   await sleep(4000);
   let a = await vs(A.player), b = await vs(B.player);
   a.paused && b.paused
@@ -131,9 +131,9 @@ try {
     const actor = i % 2 ? B : A;
     if (i % 3 === 2) {
       const target = 100 + i * 20;
-      await actor.player.evaluate((t) => { v.currentTime = t; }, target);
+      await actor.player.evaluate((t) => { window.tap && tap(); v.currentTime = t; }, target);
     } else {
-      await actor.player.evaluate(() => (v.paused ? v.play() : v.pause()));
+      await actor.player.evaluate(() => (window.tap && tap(), v.paused ? v.play() : v.pause()));
     }
     const conv = await waitFor(() => both(A, B, (x, y) => x.paused === y.paused && Math.abs(x.t - y.t) < 2.2), 9000, 300);
     if (conv) ok++;
@@ -148,12 +148,15 @@ try {
   await B.ui.locator('#chatInput').press('Enter');
   (await waitFor(async () => /kayıpta bile geldi mi/.test(await A.ui.locator('#vWatch').innerText()), 20000))
     ? pass('Mesaj kaybına rağmen sohbet mesajı ulaştı')
-    : fail('Sohbet mesajı kayboldu');
+    : fail(`Sohbet mesajı kayboldu (A: ${(await A.ui.locator('#vWatch').innerText()).slice(-300).replace(/\n/g, ' | ')})`);
   broker.setLoss(0);
   await sleep(2000);
 
   // Takılan "yükleniyor": üçüncü kişi yükleniyor deyip bir daha haber vermiyor
-  await A.player.evaluate(() => v.play());
+  // (videonun sonuna gelinmesin diye önce başa yakın bir yere)
+  await A.player.evaluate(() => { window.tap && tap(); v.pause(); v.currentTime = 20; });
+  await sleep(1500);
+  await A.player.evaluate(() => (window.tap && tap(), v.play()));
   await waitFor(() => both(A, B, (x, y) => !x.paused && !y.paused), 8000);
   const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
   await new Promise((r) => (ws.onopen = r));
@@ -165,7 +168,7 @@ try {
   const held = await waitFor(() => both(A, B, (x, y) => x.paused && y.paused), 6000);
   held ? pass('Biri yüklenirken ikisi de bekledi') : fail('Beklemedi');
   const resumed = await waitFor(() => both(A, B, (x, y) => !x.paused && !y.paused), 20000, 500);
-  resumed ? pass('"Yükleme bitti" hiç gelmese de en geç 12 sn sonra devam edildi') : fail('Sonsuza kadar bekledi');
+  resumed ? pass('"Yükleme bitti" hiç gelmese de en geç 12 sn sonra devam edildi') : fail(`Sonsuza kadar bekledi: ${JSON.stringify([await vs(A.player), await vs(B.player)])}`);
   ws.close();
 
   for (const X of [A, B]) for (const l of X.log) fail(`${X.label}: ${l}`);

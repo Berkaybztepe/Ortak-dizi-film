@@ -39,6 +39,16 @@ async function browser(name) {
 
 const R = reporter();
 const { pass, fail } = R;
+async function waitFor(fn, ms = 10000, every = 250) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    try {
+      if (await fn()) return true;
+    } catch {}
+    await sleep(every);
+  }
+  return false;
+}
 const vstate = (p) => p.evaluate(() => ({ paused: v.paused, t: +v.currentTime.toFixed(2) }));
 
 try {
@@ -67,19 +77,22 @@ try {
   await pb.waitForFunction(() => window.v && v.readyState >= 1);
   await sleep(2000);
 
-  await pa.evaluate(() => { v.currentTime = 30; });
+  await pa.evaluate(() => { window.tap && tap(); v.currentTime = 30; });
   await sleep(800);
-  await pa.evaluate(() => v.play());
-  await sleep(2500);
+  await sleep(1600);
+  await pa.evaluate(() => (window.tap && tap(), v.play()));
+  (await waitFor(async () => !(await vstate(pa)).paused && !(await vstate(pb)).paused, 6000))
+    ? pass('Sonra oynatınca ikisi birlikte devam etti')
+    : fail(`Yeniden oynatma: A ${JSON.stringify(await vstate(pa))} B ${JSON.stringify(await vstate(pb))}`);
   let a = await vstate(pa), b = await vstate(pb);
   !b.paused && Math.abs(a.t - b.t) < 1.5 ? pass(`Oynat senkron (A ${a.t}, B ${b.t})`) : fail(`Oynat: A ${JSON.stringify(a)} B ${JSON.stringify(b)}`);
 
-  await pb.evaluate(() => v.pause());
+  await pb.evaluate(() => (window.tap && tap(), v.pause()));
   await sleep(1500);
   a = await vstate(pa); b = await vstate(pb);
   a.paused && Math.abs(a.t - b.t) < 0.3 ? pass(`Durdur aynı karede (A ${a.t}, B ${b.t})`) : fail(`Durdur: A ${JSON.stringify(a)} B ${JSON.stringify(b)}`);
 
-  await pa.evaluate(() => { v.currentTime = 90; });
+  await pa.evaluate(() => { window.tap && tap(); v.currentTime = 90; });
   await sleep(1500);
   b = await vstate(pb);
   Math.abs(b.t - 90) < 0.5 && b.paused ? pass('Sarma senkron') : fail('Sarma: ' + JSON.stringify(b));
@@ -120,8 +133,16 @@ try {
   await sleep(1500);
   a = await vstate(pa); b = await vstate(pb);
   !a.paused && !b.paused ? pass('Yükleme bitince ikisi de devam etti') : fail(`Devam: A ${JSON.stringify(a)} B ${JSON.stringify(b)}`);
+  // İzleyen biri odadan çıkınca video herkeste durur
   ws.close();
-  await sleep(500);
+  (await waitFor(async () => (await vstate(pa)).paused && (await vstate(pb)).paused, 6000))
+    ? pass('İzleyen biri çıkınca video ikisinde de durdu')
+    : fail(`Çıkınca durma: A ${JSON.stringify(await vstate(pa))} B ${JSON.stringify(await vstate(pb))}`);
+  await sleep(1600);
+  await pa.evaluate(() => (window.tap && tap(), v.play()));
+  (await waitFor(async () => !(await vstate(pa)).paused && !(await vstate(pb)).paused, 6000))
+    ? pass('Sonra oynatınca ikisi birlikte devam etti')
+    : fail(`Yeniden oynatma: A ${JSON.stringify(await vstate(pa))} B ${JSON.stringify(await vstate(pb))}`);
 
   // Sohbet + boşluk tuşu videoyu durdurmamalı
   const before = await vstate(pa);
@@ -131,7 +152,7 @@ try {
   await input.press('Enter');
   await sleep(800);
   const afterA = await vstate(pa);
-  !before.paused && !afterA.paused ? pass('Yazarken boşluk tuşu videoyu durdurmadı') : fail('Boşluk tuşu videoyu etkiledi');
+  !before.paused && !afterA.paused ? pass('Yazarken boşluk tuşu videoyu durdurmadı') : fail(`Boşluk tuşu videoyu etkiledi: önce ${JSON.stringify(before)} sonra ${JSON.stringify(afterA)}`);
   const bText = await ob.locator('.toasts').innerText();
   /bu bölüm efsane/.test(bText) ? pass('B mesajı bildirim olarak gördü') : fail('B mesajı görmedi: ' + bText);
   await ob.getByRole('button', { name: 'Ortak İzle panelini aç' }).click();

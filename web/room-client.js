@@ -357,6 +357,7 @@
       this.roomState = null;
       this.history = [];
       this.typing = {};
+      this.lock = true;
     }
 
     serverNow() {
@@ -410,6 +411,7 @@
       }
       this.ws = ws;
       this.bestRtt = Infinity;
+      this.clockSamples = [];
       let opened = false;
 
       let lastRx = Date.now();
@@ -534,11 +536,11 @@
       const meId = this.me.id;
       if (m.t === 'sync') {
         const paused = m.action === 'pause' ? true : m.action === 'play' ? false : !!m.paused;
-        this.roomState = { paused, time: m.time, at: this.serverNow(), url: this.me.url, by: meId };
+        this.roomState = { paused, time: m.time, at: typeof m.at === 'number' ? m.at : this.serverNow(), url: this.me.url, by: meId, rel: !!m.rel };
       } else if (m.t === 'tick') {
-        this.roomState = { paused: !!m.paused, time: m.time, at: this.serverNow(), url: this.me.url, by: meId };
+        this.roomState = { paused: !!m.paused, time: m.time, at: typeof m.at === 'number' ? m.at : this.serverNow(), url: this.me.url, by: meId, rel: !!m.rel };
       } else if (m.t === 'nav') {
-        this.me = { ...this.me, url: m.url || null, title: m.title || '', platform: m.platform || '' };
+        this.me = { ...this.me, url: m.url || null, title: m.title || '', platform: m.platform || '', watching: !!m.watching && !!m.url };
         this._upsert(this.me);
       } else if (m.t === 'buffer') {
         this.me = { ...this.me, buffering: !!m.on };
@@ -564,7 +566,9 @@
         wsState: this.state,
         lastError: this.error,
         clockOffset: this.clockOffset,
+        rtt: Number.isFinite(this.bestRtt) ? this.bestRtt : null,
         room: {
+          lock: this.lock,
           me: this.me,
           name: this.roomName,
           server: this.serverName,
@@ -582,13 +586,17 @@
         case 'pong': {
           const now = Date.now();
           const rtt = now - m.c;
-          if (rtt < 0) return;
-          // En kısa gidiş-dönüş süreli ölçüm en doğru saat farkını verir
-          if (rtt <= this.bestRtt * 1.5) {
-            this.bestRtt = Math.min(this.bestRtt, rtt);
-            this.clockOffset = m.s + rtt / 2 - now;
-            this.onEvent({ t: 'clock', offset: this.clockOffset, rtt });
-          }
+          if (rtt < 0 || typeof m.s !== 'number') return;
+          // Son 12 ölçümden gidiş-dönüşü en kısa olanı en doğru saat farkını verir
+          // (yolda bekleyen mesaj ölçümü bozar). Pencere kaydığı için ağ değişse de güncel kalır.
+          const samples = (this.clockSamples = this.clockSamples || []);
+          samples.push({ rtt, off: m.s + rtt / 2 - now });
+          if (samples.length > 12) samples.shift();
+          const best = samples.reduce((a, b) => (b.rtt < a.rtt ? b : a));
+          this.bestRtt = best.rtt;
+          this.rtt = rtt;
+          this.clockOffset = best.off;
+          this.onEvent({ t: 'clock', offset: this.clockOffset, rtt: best.rtt, lastRtt: rtt });
           return;
         }
         case 'welcome':
@@ -598,6 +606,7 @@
           this.serverName = m.server || null;
           this.members = m.members || [];
           this.roomState = m.state || null;
+          this.lock = m.lock !== false;
           this.history = m.history || [];
           this.lastSeq = this.history.reduce((a, h) => Math.max(a, h.seq || 0), 0);
           this.typing = {};
@@ -626,6 +635,9 @@
           break;
         case 'buffer':
           this._upsert(m.member);
+          break;
+        case 'lock':
+          this.lock = !!m.on;
           break;
         case 'chat':
           if (m.cid && this.pendingChats && this.pendingChats.has(m.cid)) {
@@ -659,10 +671,10 @@
           break;
         case 'sync':
         case 'tick':
-          this.roomState = { paused: m.paused, time: m.time, at: m.at, url: m.url, by: m.by };
+          this.roomState = { paused: m.paused, time: m.time, at: m.at, url: m.url, by: m.by, rel: !!m.rel };
           break;
         case 'countdown':
-          this.roomState = { paused: false, time: m.time, at: m.at, url: m.url, by: m.from };
+          this.roomState = { paused: false, time: m.time, at: m.at, url: m.url, by: m.from, rel: !!m.rel };
           break;
       }
       this.onEvent(m);

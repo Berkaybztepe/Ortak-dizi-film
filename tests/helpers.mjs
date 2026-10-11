@@ -42,6 +42,13 @@ export const fakePage = (title) => `<!doctype html><html><head><title>Watch ${ti
 const sr = document.getElementById('p').attachShadow({mode:'open'});
 sr.innerHTML = '<video id="v" src="https://www.disneyplus.com/media/v.webm" muted style="width:100vw;height:100vh"></video>';
 window.v = sr.getElementById('v');
+// Testte "kullanıcı dokundu" (ör. oynatıcının düğmesine basıldı) taklidi
+window.tap = () => dispatchEvent(new PointerEvent('pointerdown'));
+// Ağ takılması taklidi: video bir süre yavaş oynar (geride kalır), olay üretmeden
+window.stall = (ms, rate = 0.25) => {
+  v.playbackRate = rate;
+  setTimeout(() => (v.playbackRate = 1), ms);
+};
 // Zor koşul testi: window.__resist > 0 iken oynatıcı, dışarıdan yapılan durdur/oynat'ı bir kez geri alır
 // (bazı platform oynatıcılarının kendi durumunu dayatması gibi)
 window.__resist = 0;
@@ -61,7 +68,11 @@ if (q.has('offset')) {
   bar.setAttribute('aria-valuemax', '2700');
   bar.style.cssText = 'position:fixed;left:5%;right:5%;bottom:20px;height:6px;background:#888';
   sr.appendChild(bar);
-  setInterval(() => bar.setAttribute('aria-valuenow', String(Math.floor(v.currentTime + off))), 250);
+  // Gerçek oynatıcılar gibi çubuk sık güncellenir (değer saniyeye yuvarlanır)
+  setInterval(() => {
+    const n = String(Math.floor(v.currentTime + off));
+    if (bar.getAttribute('aria-valuenow') !== n) bar.setAttribute('aria-valuenow', n);
+  }, 100);
 }
 for (const ev of ['pause', 'play']) v.addEventListener(ev, () => {
   if (window.__resist > 0) {
