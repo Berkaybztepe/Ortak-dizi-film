@@ -3,25 +3,11 @@
 // birlikte başlama, durdurunca aynı kare, takılmadan sonra toparlanma, sarma, 3-2-1, bölümün
 // gerçek dakikası video zamanından farklı olan (Disney+ gibi) sayfalar ve güvenli mod.
 //   node tests/e2e-precision.mjs
-import fs from 'fs';
-import path from 'path';
-import { ROOT, loadPlaywright, chromeOptions, testVideo, routeFakeDisney, startServer, startBroker, TEST_CODE, reporter, sleep } from './helpers.mjs';
+import { loadPlaywright, chromeOptions, testVideo, startServer, startBroker, TEST_CODE, reporter, sleep } from './helpers.mjs';
+import { makeApp, waitFor } from './app-harness.mjs';
 
 const { chromium } = await loadPlaywright();
 const VIDEO = testVideo();
-const ENGINE = fs.readFileSync(path.join(ROOT, 'web/engine.js'), 'utf8');
-// MainActivity.bootstrapScript ile aynı yapıştırıcı (uygulamadaki gibi sahne Android katmanında)
-const BOOT = `(function(){ if (window.top !== window) return;\n${ENGINE}\n})();
-;(function () {
-  if (window.top !== window || window.__ortakIzle) return;
-  window.__ortakIzle = true;
-  function post(m) { window.__toUi(JSON.stringify(m)); }
-  function start() {
-    var engine = OrtakIzleEngine.create({ post: post, displayFont: 'OI Display', stage: false });
-    window.__ortakIzleRecv = function (m) { engine.receive(typeof m === 'string' ? JSON.parse(m) : m); };
-  }
-  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
-})();`;
 
 const PORT = 8797;
 const broker = await startBroker(18890, 18891);
@@ -29,57 +15,10 @@ broker.setDelay(60, 25); // istemci→aracı→oda→aracı→istemci: ~250 ms g
 const srv = await startServer(PORT, { ODA_KODU: TEST_CODE, ARACI: broker.ws });
 await sleep(800);
 const browser = await chromium.launch(chromeOptions({ args: ['--no-proxy-server', '--autoplay-policy=no-user-gesture-required'] }));
-
-const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing', 'drift', 'notice']);
-async function app(label) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  await routeFakeDisney(ctx, VIDEO);
-  const ui = await ctx.newPage();
-  const player = await ctx.newPage();
-  const log = [];
-  ui.on('pageerror', (e) => log.push('UI hata: ' + e.message));
-  player.on('pageerror', (e) => log.push('Oynatıcı hata: ' + e.message));
-  await player.addInitScript(BOOT);
-  await player.exposeFunction('__toUi', async (raw) => {
-    const o = JSON.parse(raw);
-    if (process.env.DEBUG && !['engine', 'drift'].includes(o.t)) console.log('      ', label, '→', raw.slice(0, 160));
-    if (!ALLOWED.has(o.t)) return;
-    await ui.evaluate((m) => window.OI && OI.fromPlayer(m), o).catch(() => {});
-  });
-  await ui.exposeFunction('__native', async (fn, args) => {
-    if (fn === 'openPlayer') {
-      await player.goto(args[0]);
-      await ui.evaluate(() => OI.setLayout({ mode: 'side' }));
-    } else if (fn === 'toPlayer') {
-      await player.evaluate((j) => window.__ortakIzleRecv && __ortakIzleRecv(j), args[0]).catch(() => {});
-    } else if (fn === 'closePlayer') {
-      await player.goto('about:blank');
-    }
-  });
-  await ui.addInitScript((url) => (window.__ortakIzleBrokers = [url]), broker.ws);
-  await ui.addInitScript(() => {
-    const fns = ['openPlayer', 'closePlayer', 'toPlayer', 'setPanel', 'setFloatSize', 'setDesktopMode', 'keepScreenOn', 'share', 'startDiscovery', 'stopDiscovery', 'stopHost', 'overlay', 'confirm', 'playerBack', 'checkUpdate'];
-    window.OrtakNative = { getInfo: () => JSON.stringify({ hosting: false, port: -1, addresses: [] }), startHost: () => JSON.stringify({ ok: false, error: 'test' }) };
-    for (const f of fns) window.OrtakNative[f] = (...a) => { window.__native(f, a); return ''; };
-  });
-  await ui.goto(`http://127.0.0.1:${PORT}/index.html`);
-  return { ctx, ui, player, log, label };
-}
+const app = (label) => makeApp(browser, { label, port: PORT, brokerWs: broker.ws, video: VIDEO, debug: !!process.env.DEBUG });
 
 const R = reporter();
 const { pass, fail } = R;
-
-async function waitFor(fn, ms = 10000, every = 200) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    try {
-      const v = await fn();
-      if (v) return v;
-    } catch {}
-    await sleep(every);
-  }
-  return null;
-}
 
 // İki videonun aynı andaki konum farkı (sn). off*: sayfanın "bölüm dakikası = video zamanı + off"
 const snap = (p) => p.evaluate(() => ({ paused: v.paused, t: v.currentTime, now: performance.timeOrigin + performance.now(), rate: v.playbackRate }));

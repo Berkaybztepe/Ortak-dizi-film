@@ -2,71 +2,20 @@
 // taklit eder: arayüz sayfası + oynatıcı sayfası, aradaki mesajlar MainActivity'deki gibi
 // (OrtakNative.toPlayer / OI.fromPlayer) taşınır.
 //   node tests/e2e-app.mjs
-import fs from 'fs';
 import os from 'os';
-import path from 'path';
-import { ROOT, loadPlaywright, chromeOptions, testVideo, routeFakeDisney, startServer, startBroker, TEST_CODE, reporter, sleep } from './helpers.mjs';
+import { loadPlaywright, chromeOptions, testVideo, startServer, startBroker, TEST_CODE, reporter, sleep } from './helpers.mjs';
+import { makeApp } from './app-harness.mjs';
 
 const { chromium } = await loadPlaywright();
 const VIDEO = testVideo();
-const ENGINE = fs.readFileSync(path.join(ROOT, 'web/engine.js'), 'utf8');
 const SHOTS = process.env.SHOTS_DIR || os.tmpdir();
-// MainActivity.bootstrapScript ile aynı yapıştırıcı
-const BOOT = `(function(){ if (window.top !== window) return;\n${ENGINE}\n})();
-;(function () {
-  if (window.top !== window || window.__ortakIzle) return;
-  window.__ortakIzle = true;
-  function post(m) { window.__toUi(JSON.stringify(m)); }
-  function start() {
-    var engine = OrtakIzleEngine.create({ post: post, displayFont: 'OI Display' });
-    window.__ortakIzleRecv = function (m) { engine.receive(typeof m === 'string' ? JSON.parse(m) : m); };
-  }
-  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
-})();`;
 
-const PORT = 8798;
-const broker = await startBroker(18850, 18851);
+const PORT = 8794;
+const broker = await startBroker(18880, 18881);
 const srv = await startServer(PORT, { ODA_KODU: TEST_CODE, ARACI: broker.ws });
 await sleep(800);
 const browser = await chromium.launch(chromeOptions({ args: ['--no-proxy-server', '--autoplay-policy=no-user-gesture-required'] }));
-
-const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing', 'drift', 'notice']);
-async function app(label, w, h) {
-  const ctx = await browser.newContext({ viewport: { width: w, height: h } });
-  await routeFakeDisney(ctx, VIDEO);
-  const ui = await ctx.newPage();
-  const player = await ctx.newPage();
-  const log = [];
-  ui.on('pageerror', (e) => log.push('UI hata: ' + e.message));
-  player.on('pageerror', (e) => log.push('Oynatıcı hata: ' + e.message));
-  await player.addInitScript(BOOT);
-  await player.exposeFunction('__toUi', async (raw) => {
-    const o = JSON.parse(raw);
-    if (!ALLOWED.has(o.t)) return;
-    await ui.evaluate((m) => window.OI && OI.fromPlayer(m), o).catch(() => {});
-  });
-  const calls = [];
-  await ui.exposeFunction('__native', async (fn, args) => {
-    calls.push(fn);
-    if (fn === 'openPlayer') {
-      await player.goto(args[0]);
-      await ui.evaluate(() => OI.setLayout({ mode: 'side' }));
-    } else if (fn === 'toPlayer') {
-      await player.evaluate((j) => window.__ortakIzleRecv && __ortakIzleRecv(j), args[0]).catch(() => {});
-    } else if (fn === 'closePlayer') {
-      await player.goto('about:blank');
-      await ui.evaluate(() => OI.setLayout({ mode: 'full' }));
-    }
-  });
-  await ui.addInitScript((url) => (window.__ortakIzleBrokers = [url]), broker.ws);
-  await ui.addInitScript(() => {
-    const fns = ['openPlayer', 'closePlayer', 'toPlayer', 'setPanel', 'setFloatSize', 'setDesktopMode', 'keepScreenOn', 'share', 'startDiscovery', 'stopDiscovery', 'stopHost'];
-    window.OrtakNative = { getInfo: () => JSON.stringify({ hosting: false, port: -1, addresses: [] }), startHost: () => JSON.stringify({ ok: false, error: 'test' }) };
-    for (const f of fns) window.OrtakNative[f] = (...a) => { window.__native(f, a); return ''; };
-  });
-  await ui.goto(`http://127.0.0.1:${PORT}/index.html`);
-  return { ctx, ui, player, log, calls, label };
-}
+const app = (label, w, h) => makeApp(browser, { label, port: PORT, brokerWs: broker.ws, video: VIDEO, w, h });
 
 const R = reporter();
 const { pass, fail } = R;
@@ -145,13 +94,16 @@ try {
   const msgsA = await A.ui.locator('#vWatch').innerText().catch(() => '');
   /çay hazır/.test(msgsA) ? pass('Mesaj A\'nın panelinde') : fail('Mesaj gelmedi');
   await B.ui.getByRole('button', { name: 'Tepki: 😂' }).click();
-  await sleep(500);
-  (await A.player.locator('[data-ortak-izle="stage"] .r').count()) ? pass('Tepki A\'nın videosunda uçtu') : fail('Tepki yok');
+  await sleep(800);
+  A.overlays('react').some((r) => r.emoji === '😂' && r.name === 'Kardeş') ? pass('Tepki A\'nın videosunda (yerel katman) uçtu') : fail('Tepki yok: ' + JSON.stringify(A.overlays('react')));
 
-  // B salona döner
-  await B.ui.locator('#homeBtn').click();
-  await sleep(500);
-  (await B.ui.locator('#vLobby').isVisible()) ? pass('Ana ekrana dönüş çalışıyor') : fail('Ana ekrana dönülemedi');
+  // B sol üstteki geri düğmesiyle salona döner (onaylayarak)
+  await B.ui.evaluate(() => OI.onBack());
+  await sleep(200);
+  await B.ui.evaluate(() => OI.onConfirm('exit', true));
+  await sleep(1200);
+  (await B.ui.locator('#vLobby').isVisible()) ? pass('Geri düğmesiyle ana ekrana dönüş çalışıyor') : fail('Ana ekrana dönülemedi');
+  (await vs(A.player)).paused ? pass('B çıkınca A\'da video durdu') : fail('B çıkınca A durmadı');
 
   for (const X of [A, B]) for (const l of X.log) fail(`${X.label}: ${l}`);
 } catch (e) {

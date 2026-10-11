@@ -122,13 +122,25 @@
     },
   };
 
+  // Oynatıcının üstündeki yerel katman (Android): tepkiler, akan mesajlar, uyarılar, 3-2-1
+  const overlay = (o) => ENV === 'app' && ui.playerOpen && native.call('overlay', o);
+
+  // Yönetici: odayı açan kişi. Kilit açıkken bölümü yalnızca o seçer, diğerleri onu takip eder.
+  const adminMember = () => client.members.find((m) => m.admin) || null;
+  const isAdmin = () => !!client.me?.admin;
+  const locked = () => client.state === 'bağlı' && client.lock && !!adminMember() && !isAdmin();
+  const adminWatching = () => {
+    const a = adminMember();
+    return a && a.url && (a.watching ?? ui.watching[a.id]) ? a : null;
+  };
+
   const PLATFORMS = [
     { id: 'disney', name: 'Disney+', url: 'https://www.disneyplus.com/', sub: 'Disney, Marvel, Star Wars' },
     { id: 'hbo', name: 'HBO Max', url: 'https://play.hbomax.com/', sub: 'HBO, Warner Bros.' },
     { id: 'apple', name: 'Apple TV+', url: 'https://tv.apple.com/', sub: 'Apple Originals' },
     { id: 'prime', name: 'Prime Video', url: 'https://www.primevideo.com/', sub: 'Amazon' },
     { id: 'youtube', name: 'YouTube', url: 'https://www.youtube.com/', sub: 'Denemek için ideal' },
-    { id: 'netflix', name: 'Netflix', url: 'https://www.netflix.com/', sub: 'Yalnızca bilgisayar eklentisiyle', appOff: true },
+    { id: 'netflix', name: 'Netflix', url: 'https://www.netflix.com/', sub: 'Telefonda engelleyebilir' },
   ];
   const REACTIONS = ['😂', '😮', '😱', '❤️', '👏', '🔥', '😢', '👀'];
 
@@ -148,6 +160,10 @@
     lastNav: {}, // üye id -> zaman
     watching: {}, // üye id -> izleme sayfasında mı (sitenin bildirdiği)
     connecting: false,
+    drift: {}, // üye id -> {err, at}: o kişinin oda durumuna göre farkı (sn)
+    bufSince: {}, // üye id -> "yükleniyor" dediği an (takılı kalırsa bir süre sonra gösterme)
+    update: null, // {code, name, notes}
+    leftWatch: 0, // kilitliyken bölüm dışına çıkılan an (geri getirmek için)
   };
 
   const client = new RoomClient({ kind: ENV === 'app' ? 'app' : 'web', onEvent: onRoomEvent });
@@ -187,8 +203,10 @@
   })();
 
   function react(emoji) {
-    if (ui.playerOpen) native.call('toPlayer', { t: 'cmd', cmd: 'react', emoji });
-    else client.send({ t: 'react', emoji });
+    if (ui.playerOpen) {
+      native.call('toPlayer', { t: 'cmd', cmd: 'react', emoji });
+      overlay({ type: 'react', emoji, name: 'Sen' });
+    } else client.send({ t: 'react', emoji });
   }
 
   function colorOf(id) {
@@ -297,7 +315,7 @@
   // ---------------------------------------------------------------- oda olayları
   // Oynatıcı sayfası güvenilmez (dizi sitesinin kodu da orada çalışıyor): yalnızca
   // senkron için gereken bilgiyi gönder, sohbet metinlerini gönderme.
-  const PLAYER_EVENTS = new Set(['status', 'clock', 'welcome', 'member-join', 'member-leave', 'nav', 'buffer', 'state', 'sync', 'tick', 'countdown', 'react']);
+  const PLAYER_EVENTS = new Set(['status', 'clock', 'welcome', 'member-join', 'member-leave', 'nav', 'buffer', 'state', 'sync', 'tick', 'countdown', 'react', 'lock']);
   function forPlayer(m) {
     if (m.t !== 'status' && m.t !== 'welcome') return m;
     const room = m.t === 'status' ? m.room : null;
@@ -322,6 +340,17 @@
         ui.joinedAt = ui.joinedAt || Date.now();
         native.call('stopDiscovery');
         render();
+        followAdmin();
+        break;
+      case 'lock':
+        render();
+        followAdmin();
+        break;
+      case 'drift':
+        ui.drift[m.from] = { err: m.err, at: Date.now() };
+        break;
+      case 'react':
+        if (m.from !== meId) overlay({ type: 'react', emoji: m.emoji, name: m.name });
         break;
       case 'error':
         if (m.code === 'password') {
@@ -333,11 +362,13 @@
         break;
       case 'chat':
         renderMessages();
-        if (m.from && m.from !== meId && !m.system) {
+        if (m.from && m.from !== meId && !m.system && !m.late) {
           if (!chatVisible()) {
             ui.unread++;
             renderBadges();
-            toast([h('b', null, m.name), ': ', m.text]);
+            // İzlerken mesaj videonun altından akar; ana ekranda bildirim olarak görünür
+            if (ui.playerOpen && ENV === 'app') overlay({ type: 'msg', name: m.name, text: m.text });
+            else toast([h('b', null, m.name), ': ', m.text]);
           }
         }
         break;
@@ -349,17 +380,21 @@
         break;
       case 'member-join':
         toast(`${m.member.name} odaya katıldı.`);
+        overlay({ type: 'notice', text: `${m.member.name} odaya geldi`, ms: 3500 });
         render();
         break;
       case 'member-leave':
+        delete ui.drift[m.member.id];
         toast(`${m.member.name} odadan çıktı.`);
+        overlay({ type: 'notice', text: `${m.member.name} odadan çıktı`, ms: 5000 });
         render();
         break;
       case 'nav':
         ui.lastNav[m.member.id] = Date.now();
         ui.watching[m.member.id] = !!m.watching;
         render();
-        if (m.watching && m.member.url) offerFollow(m.member);
+        if (m.member.admin && locked()) followAdmin();
+        else if (m.watching && m.member.url) offerFollow(m.member);
         break;
       case 'invite':
         if (!(ui.playerOpen && ui.engine && sameContent(ui.engine.url, m.url))) {
@@ -370,7 +405,12 @@
         }
         break;
       case 'sync':
-        if (ui.view === 'watch') {
+        if (m.reason) {
+          // Biri bölümden/odadan çıktı: video herkeste durdu, büyük uyarı
+          const what = m.reason === 'left' ? 'odadan çıktı' : 'bölümden çıktı';
+          overlay({ type: 'notice', text: `${m.name} ${what} · video durduruldu`, ms: 7000 });
+          toast([h('b', null, m.name), ` ${what}. Video durduruldu.`], { ms: 6000 });
+        } else if (ui.view === 'watch') {
           const verb = m.action === 'play' ? 'oynattı' : m.action === 'pause' ? 'durdurdu' : `${fmt(m.time)} konumuna sardı`;
           toast(`${m.name} ${verb}.`);
         }
@@ -382,10 +422,51 @@
         break;
       case 'countdown':
         toast(`${m.name} geri sayım başlattı.`);
+        overlay({ type: 'count', ms: Math.max(0, m.at - client.serverNow()) });
         break;
       case 'buffer':
+        if (m.on) ui.bufSince[m.member.id] = Date.now();
+        else delete ui.bufSince[m.member.id];
         renderWatch();
         break;
+    }
+  }
+
+  // Kilitliyken yöneticinin açtığı bölüm bizde de kendiliğinden açılır; başka yere gidildiyse geri gelinir
+  function followAdmin() {
+    if (ENV !== 'app' || !locked()) return;
+    const a = adminWatching();
+    if (!a) return;
+    if (ui.playerOpen && ui.engine && (sameContent(ui.engine.url, a.url) || sameTitle(ui.engine, a))) return;
+    if (ui.playerOpen && !ui.engine) return; // sayfa yükleniyor
+    toast(`${a.name} ${a.title || 'bir bölüm'} açtı. Sen de geçiyorsun…`);
+    openUrl(a.url);
+  }
+  // Aynı bölüm farklı adresle açılmış olabilir (yönlendirme): başlık aynıysa aynı say
+  function sameTitle(e, a) {
+    if (!e?.watching || !a.title || !e.title) return false;
+    try {
+      if (new URL(e.url).hostname.replace(/^www\./, '') !== new URL(a.url).hostname.replace(/^www\./, '')) return false;
+    } catch {
+      return false;
+    }
+    return e.title === a.title;
+  }
+  // Kilitliyken oynatıcıda başka bir yere gidildi mi? Kısa bir süre sonra yöneticinin bölümüne geri dön
+  function guardLock(e) {
+    if (!locked() || !e) return;
+    const a = adminWatching();
+    if (!a) return;
+    const elsewhere = !e.watching || (e.title && a.title && e.title !== a.title && !sameContent(e.url, a.url));
+    if (!elsewhere) {
+      ui.leftWatch = 0;
+      return;
+    }
+    if (!ui.leftWatch) ui.leftWatch = Date.now();
+    else if (Date.now() - ui.leftWatch > 2500) {
+      ui.leftWatch = 0;
+      overlay({ type: 'notice', text: `Bölümü ${a.name} seçiyor · geri getirildin`, ms: 4000 });
+      native.call('openPlayer', a.url);
     }
   }
 
@@ -432,6 +513,7 @@
   function closePlayer() {
     native.call('closePlayer');
     native.call('keepScreenOn', false);
+    client.send({ t: 'nav', url: null, watching: false });
     ui.playerOpen = false;
     ui.engine = null;
     ui.view = 'lobby';
@@ -449,7 +531,18 @@
         if (m.url && m.url !== ui.engine?.url) dropOffers(m.url);
         ui.engine = m;
         renderWatch();
+        guardLock(m);
         break;
+      case 'notice':
+        if (m.blocked) {
+          overlay({ type: 'notice', text: m.text, ms: 9000 });
+          toast(
+            [h('b', null, m.text), h('span', { class: 'q' }, `${m.platform || 'Bu site'} telefonda tarayıcıdan izlemeye izin vermiyor. Bilgisayarda Ortak İzle eklentisiyle izleyebilirsiniz.`)],
+            { action: { label: 'Tamam', run: () => {} }, ms: 30000 }
+          );
+        } else if (m.text) toast(m.text);
+        break;
+      case 'drift':
       case 'sync':
       case 'tick':
       case 'nav':
@@ -621,6 +714,8 @@
     renderTicket();
     renderNow();
     renderPlatforms();
+    renderLock();
+    renderUpdate();
     renderPeople(chat.els.people);
     renderMessages();
     renderTyping();
@@ -656,7 +751,7 @@
     $('tkSeats').replaceChildren(
       ...(connected
         ? client.members.map((m) => {
-            const where = m.id === client.me.id ? 'sen' : m.buffering ? 'yükleniyor' : m.title ? 'izliyor' : m.kind === 'web' ? 'panelde' : 'odada';
+            const where = (m.id === client.me.id ? 'sen' : bufFresh(m) ? 'yükleniyor' : m.title ? 'izliyor' : m.kind === 'web' ? 'panelde' : 'odada') + (m.admin ? ' · yönetici' : '');
             return h('span', { class: 'seat' }, avatar(m, m.id === client.me.id ? 'sm me' : 'sm'), m.name, h('small', null, where));
           })
         : [h('span', { class: 'seat' }, client.state === 'hata' ? 'Bağlantı bekleniyor…' : 'Bağlanıyor…')])
@@ -696,12 +791,16 @@
     $('nowWho').textContent = `${watching.name} izliyor${watching.platform ? ' · ' + watching.platform : ''}`;
     $('nowWhat').textContent = watching.title || 'Bir bölüm açık';
     const st = client.roomState;
+    // Oynarken konum her saniye bildirilir; uzun süredir haber yoksa tahmini dakikayı yürütme
+    const fresh = st && (st.paused || client.serverNow() - st.at < 15000);
     $('nowTc').textContent =
-      st && st.url && sameContent(st.url, watching.url)
+      st && st.url && sameContent(st.url, watching.url) && fresh
         ? `${fmt(client.expectedTime(st))} · ${st.paused ? 'duraklatıldı' : 'oynuyor'}`
-        : watching.buffering
+        : bufFresh(watching)
           ? 'yükleniyor'
-          : 'henüz başlamadı';
+          : st && st.url && sameContent(st.url, watching.url)
+            ? 'izliyor'
+            : 'henüz başlamadı';
     $('nowBtn').textContent = ENV === 'web' ? 'Sitede aç' : 'Sen de aç';
     $('nowBtn').onclick = () => openUrl(watching.url);
   }
@@ -724,7 +823,7 @@
             'data-p': p.id,
             type: 'button',
             'aria-disabled': off ? 'true' : null,
-            onclick: () => (off ? toast('Netflix uygulama içinde oynatmaya izin vermiyor. Bilgisayarda Ortak İzle eklentisiyle kullan.') : openUrl(p.url)),
+            onclick: () => (locked() ? lockedToast() : off ? toast('Bu platform uygulama içinde oynatmaya izin vermiyor.') : openUrl(p.url)),
           },
           h('span', { class: 'nm', lang: 'en' }, p.name),
           h('span', { class: 'sub' }, p.sub)
@@ -748,6 +847,7 @@
       e.preventDefault();
       let v = input.value.trim();
       if (!v) return input.focus();
+      if (locked()) return lockedToast();
       if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
       try {
         openUrl(new URL(v).href);
@@ -759,20 +859,53 @@
     if (ENV === 'web') $('pfHint').textContent = 'Senkron için uygulama ya da bilgisayar eklentisi gerekir.';
   }
 
+  function lockedToast() {
+    const a = adminMember();
+    toast(`Bölümü ${a ? a.name : 'odayı açan'} seçiyor. O bir bölüm açınca sende de kendiliğinden açılır.`);
+  }
+
+  // "Yükleniyor" bilgisi takılı kalmasın: 15 sn'den eskiyse gösterme
+  const bufFresh = (m) => !!m.buffering && (!(m.id in ui.bufSince) || Date.now() - ui.bufSince[m.id] < 15000);
+
+  function renderLock() {
+    const lockOn = locked();
+    for (const b of document.querySelectorAll('#platforms .pf')) b.classList.toggle('off', lockOn);
+    const a = adminMember();
+    if (ENV === 'app') {
+      $('pfHint').textContent = lockOn
+        ? `Bölümü ${a.name} seçiyor; açtığında sende de açılır.`
+        : 'İlk açılışta hesabınla bir kez giriş yap.';
+    }
+    $('lockRow').hidden = !isAdmin() || client.members.length < 1;
+    $('setLock').checked = !!client.lock;
+    const wl = $('wLock');
+    wl.hidden = !(a && client.lock);
+    wl.textContent = a ? (isAdmin() ? 'Bölümü sen seçiyorsun' : `Bölümü ${a.name} seçiyor`) : '';
+  }
+
+  let backShown = null;
   function renderWatch() {
     if (ui.view !== 'watch') return;
+    // Kilitliyken diğer kişi bölümden çıkamaz: geri düğmesi gizli
+    const showBack = !(locked() && adminWatching());
+    if (showBack !== backShown) {
+      backShown = showBack;
+      overlay({ type: 'back', show: showBack });
+    }
     const e = ui.engine;
     const meId = client.me?.id;
     $('wPlatform').textContent = e?.platform || 'Oynatıcı';
     $('wTitle').textContent = e?.title || (e?.watching ? 'Bölüm' : 'Bir bölüm seç');
     const st = client.roomState;
     // e.time null: bu platformda bölümün gerçek dakikası okunamadı
-    const tc = e?.hasVideo ? e.time : st && !st.rel ? client.expectedTime(st) : 0;
+    // Panelde her zaman bu cihazdaki videonun gerçek konumu yazar (video yoksa tahmin yürütmez)
+    const tc = e?.hasVideo ? e.time : null;
     $('wTc').firstChild.textContent = tc === null ? '–:––' : fmt(tc);
     $('wDur').textContent = e?.hasVideo && e.duration && tc !== null ? `/ ${fmt(e.duration)}` : '';
 
     const others = client.members.filter((m) => m.id !== meId);
-    const waiting = others.filter((m) => m.buffering);
+    const peers = others.filter((m) => m.url && e?.url && (sameContent(m.url, e.url) || sameTitle(e, m)));
+    const waiting = peers.filter(bufFresh);
     let cls = '';
     let txt = 'Video bekleniyor';
     if (client.state !== 'bağlı') {
@@ -790,16 +923,40 @@
     } else if (!others.length) {
       cls = '';
       txt = 'Odada yalnızsın';
-    } else if (st && st.url && e.url && !sameContent(st.url, e.url)) {
+    } else if (!peers.length) {
       cls = 'warn';
       txt = 'Farklı bölümdesiniz';
-    } else if (e.time === null || st?.rel) {
+    } else if (e.starting) {
       cls = 'ok';
-      txt = e.paused ? 'Senkron · duraklatıldı' : 'Senkron';
+      txt = 'Birlikte başlıyor…';
+    } else if (e.paused) {
+      cls = 'ok';
+      txt = 'Duraklatıldı';
     } else {
-      const drift = st ? Math.abs(client.expectedTime(st) - e.time) : 0;
-      cls = drift > 2.5 && !e.paused ? 'warn' : 'ok';
-      txt = cls === 'warn' ? `${drift.toFixed(0)} sn fark` : e.paused ? 'Senkron · duraklatıldı' : 'Senkron';
+      // "Senkron" yalnızca ölçülen fark gerçekten küçükse yazar. Kumanda bizdeyse fark diğerlerinin
+      // bildirdiğidir, değilse kendi ölçtüğümüz.
+      const errs = e.leader
+        ? peers.map((m) => ui.drift[m.id]).filter((d) => d && Date.now() - d.at < 7000 && typeof d.err === 'number').map((d) => Math.abs(d.err))
+        : typeof e.err === 'number'
+          ? [Math.abs(e.err)]
+          : [];
+      if (errs.length) {
+        const worst = Math.max(...errs);
+        cls = worst < 0.25 ? 'ok' : 'warn';
+        txt = worst < 0.25 ? 'Senkron' : 'Eşitleniyor…';
+      } else if (e.mode === 'safe' || e.time === null) {
+        cls = '';
+        txt = 'Güvenli mod · oynat/durdur ortak';
+      } else {
+        cls = '';
+        txt = 'Kontrol ediliyor…';
+      }
+    }
+    // Biri yüklenirken videonun üstünde de görünsün
+    const noteTxt = e?.holding && waiting.length ? `${waiting.map((m) => m.name).join(', ')} yükleniyor, bekleniyor…` : null;
+    if (noteTxt !== ui.lastNote) {
+      ui.lastNote = noteTxt;
+      overlay({ type: 'note', text: noteTxt });
     }
     $('wChip').className = 'chip ' + cls;
     $('wChipTxt').textContent = txt;
@@ -808,8 +965,8 @@
       ...client.members.map((m) => {
         const mine = m.id === meId;
         const same = mine ? !!e?.hasVideo : m.url && e?.url && sameContent(m.url, e.url);
-        const where = m.buffering ? 'yükleniyor' : same ? 'burada' : m.title ? m.title : m.kind === 'web' ? 'panelde' : 'odada';
-        return h('span', { style: `--pc:${colorOf(m.id)}` }, h('i'), `${mine ? 'Sen' : m.name} · ${where}`);
+        const where = bufFresh(m) ? 'yükleniyor' : same ? 'burada' : m.title ? m.title : m.kind === 'web' ? 'panelde' : 'odada';
+        return h('span', { style: `--pc:${colorOf(m.id)}` }, h('i'), `${mine ? 'Sen' : m.name}${m.admin ? ' (yönetici)' : ''} · ${where}`);
       })
     );
     const playing = !!e?.hasVideo && !e.paused;
@@ -821,7 +978,12 @@
     $('tResync').disabled = !e?.hasVideo;
     $('tCall').disabled = !e?.url || client.state !== 'bağlı';
   }
-  setInterval(() => ui.view === 'watch' && renderWatch(), 1000);
+  setInterval(() => {
+    if (ui.view !== 'watch') return;
+    renderWatch();
+    // Kilitliyken başka sayfada kalındıysa yöneticinin bölümüne geri dön (sayfa durumu değişmese de)
+    if (ui.playerOpen && ui.engine) guardLock(ui.engine);
+  }, 1000);
 
   function renderFloat() {
     if (ui.layout !== 'float' || ui.view !== 'watch') return;
@@ -906,6 +1068,30 @@
     native.call('setDesktopMode', settings.desktop);
   });
   $('setAwake').addEventListener('change', (e) => ((settings.awake = e.target.checked), save()));
+  $('setLock').addEventListener('change', (e) => client.send({ t: 'lock', on: e.target.checked }));
+
+  // ---------------------------------------------------------------- güncelleme
+  function renderUpdate() {
+    const c = $('updateCard');
+    c.hidden = !(ENV === 'app' && ui.update && ui.view === 'lobby');
+    if (!c.hidden) $('updTitle').textContent = `Ortak İzle ${ui.update.name} hazır`;
+  }
+  $('updGo').addEventListener('click', () => {
+    $('updGo').disabled = true;
+    $('updBar').hidden = false;
+    $('updFill').style.width = '0%';
+    $('updText').textContent = 'İndiriliyor…';
+    native.call('installUpdate');
+  });
+  $('updCheck').addEventListener('click', () => {
+    ui.manualCheck = true;
+    $('verHint').textContent = 'Denetleniyor…';
+    native.call('checkUpdate');
+  });
+  function showVersion() {
+    const v = native.json('appVersion');
+    $('verHint').textContent = v ? `Sürüm ${v.name}${ui.update ? ` · ${ui.update.name} hazır` : ''}` : '—';
+  }
   $('renameInput').value = settings.name;
   $('renameForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -931,7 +1117,6 @@
       if (ui.tab === 'chat') chat.els.msgs.scrollTop = chat.els.msgs.scrollHeight;
     });
   }
-  $('homeBtn').addEventListener('click', closePlayer);
   $('collapseBtn').addEventListener('click', () => native.call('setPanel', 'closed'));
   $('fOpen').addEventListener('click', () => native.call('setPanel', 'open'));
   $('tResync').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'resync' }));
@@ -977,7 +1162,59 @@
       ui.engine = null;
       ui.view = 'lobby';
       native.call('keepScreenOn', false);
+      client.send({ t: 'nav', url: null, watching: false });
       render();
+    },
+    // Geri: sol üstteki düğme ya da telefonun geri hareketi. Bölümden kazara çıkılmasın.
+    onBack() {
+      if (!ui.playerOpen) return;
+      const a = adminWatching();
+      if (locked() && a) {
+        overlay({ type: 'notice', text: `Bölümü ${a.name} yönetiyor · ${a.name} çıkınca sen de çıkabilirsin`, ms: 4000 });
+        return;
+      }
+      const e = ui.engine;
+      if (e && e.watching && e.hasVideo) {
+        const others = client.members.some((m) => m.id !== client.me?.id && m.url && (sameContent(m.url, e.url) || sameTitle(e, m)));
+        native.call('confirm', {
+          id: 'exit',
+          title: 'Bölümden çıkılsın mı?',
+          text: others ? 'Video ikinizde de durur.' : 'Video durur.',
+          ok: 'Çık',
+          cancel: 'İzlemeye devam',
+        });
+        return;
+      }
+      native.call('playerBack');
+    },
+    onConfirm(id, ok) {
+      if (id !== 'exit' || !ok) return;
+      // Önce herkeste durdur (sayfa kapanmadan), sonra çık
+      native.call('toPlayer', { t: 'cmd', cmd: 'pauseAll' });
+      setTimeout(() => native.call('playerBack'), 350);
+    },
+    onUpdate(info) {
+      ui.update = info || null;
+      showVersion();
+      renderUpdate();
+      if (ui.manualCheck) {
+        ui.manualCheck = false;
+        toast(info ? `Yeni sürüm hazır: ${info.name}. Ana ekrandaki "Güncelle"ye dokun.` : 'En güncel sürümü kullanıyorsun.');
+      }
+    },
+    onUpdateProgress(p) {
+      if (typeof p === 'number') {
+        $('updFill').style.width = `${p}%`;
+        $('updText').textContent = p >= 100 ? 'Kurulum ekranı açılıyor… "Güncelle"ye dokun.' : `İndiriliyor… %${p}`;
+        if (p >= 100) setTimeout(() => ($('updGo').disabled = false), 4000);
+        return;
+      }
+      $('updGo').disabled = false;
+      $('updGo').textContent = 'Tekrar dene';
+      $('updText').textContent =
+        p === 'izin'
+          ? 'Açılan ayarda "Bu kaynaktan izin ver"i aç ve geri dön; kurulum kendiliğinden açılır.'
+          : String(p);
     },
     onResume() {
       // Uygulama arka plandan dönünce bağlantıyı tazele, gerekirse ağ taramasını sürdür
@@ -1026,6 +1263,10 @@
         { action: { label: 'Tamam', run: () => {} }, ms: 30000 }
       );
     }
+    // Yeni sürüm var mı? (açılışta ve 6 saatte bir)
+    showVersion();
+    setTimeout(() => native.call('checkUpdate'), 4000);
+    setInterval(() => native.call('checkUpdate'), 6 * 3600 * 1000);
     // Android: oda bu cihazda açıksa ona, değilse son sunucuya bağlan
     const info = native.json('getInfo');
     if (info?.hosting) {
@@ -1048,7 +1289,7 @@
   function demo(kind) {
     settings.name = settings.name || 'Berkay';
     const now = Date.now();
-    const me = { id: 'me', name: 'Berkay', kind: 'app', url: null, title: '', platform: '' };
+    const me = { id: 'me', name: 'Berkay', kind: 'app', url: null, title: '', platform: '', admin: true };
     const sis = {
       id: 'k1',
       name: 'Kardeş',
@@ -1103,7 +1344,7 @@
     ui.view = 'watch';
     ui.playerOpen = true;
     ui.layout = kind === 'float' ? 'float' : kind === 'bottom' ? 'bottom' : 'side';
-    ui.engine = { hasVideo: true, time: 2540, duration: 3480, paused: false, platform: 'HBO Max', title: sis.title, url: sis.url, watching: true };
+    ui.engine = { hasVideo: true, time: 2540, duration: 3480, paused: false, platform: 'HBO Max', title: sis.title, url: sis.url, watching: true, err: 0.04, mode: 'exact', leader: false };
     render();
     if (kind === 'float') {
       ui.unread = 2;

@@ -1,7 +1,7 @@
 // Gerçek Android (emülatör/cihaz) testi: test sürümünü kurar, uygulamanın içindeki WebView ekranlarına
 // hata ayıklama protokolüyle bağlanır; oda açma, oda koduyla katılma, sohbet, oynat/durdur/sar,
 // geri sayım, tepki, tam ekran ve dikey ekranı dener.
-// Gerekenler: çalışan emülatör (adb devices), node tests/broker.mjs 18870 18871, sahte video sitesi (10.0.2.2:8900),
+// Gerekenler: çalışan emülatör (adb devices), node tests/broker.mjs 18870 18871, node tests/fake-site.mjs,
 // ./gradlew :app:assembleDebug.  Çalıştır: node tests/e2e-android.mjs
 // Emülatörde gerçek uygulama testi (Android WebView + Kotlin oda sunucusu + oda kodu)
 import { execSync } from 'child_process';
@@ -88,7 +88,9 @@ async function waitFor(fn, ms = 60000, every = 1000) {
 step('APK kuruluyor');
 if (!process.env.SKIP_INSTALL) console.log(adb(`install -r -g ${new URL('../android/app/build/outputs/apk/debug/app-debug.apk', import.meta.url).pathname}`));
 adb('shell pm clear com.ortakizle.app');
-adb('shell am start -W -n com.ortakizle.app/.MainActivity --es araci_tcp tcp://10.0.2.2:18870 --es araci_ws ws://10.0.2.2:18871/mqtt');
+adb('logcat -c');
+// UPDATE_DIR verildiyse uygulama güncellemeyi GitHub yerine sahte siteden (fake-site.mjs) arar
+adb(`shell am start -W -n com.ortakizle.app/.MainActivity --es araci_tcp tcp://10.0.2.2:18870 --es araci_ws ws://10.0.2.2:18871/mqtt${process.env.UPDATE_DIR ? ' --es guncelleme_url http://10.0.2.2:8900/guncelleme' : ''}`);
 
 step('WebView hata ayıklama soketi aranıyor');
 const sock = await waitFor(() => {
@@ -192,44 +194,126 @@ play2 ? pass('Tabletteki oynat kardeşe ulaştı') : fail('Oynat ulaşmadı');
 const tick = await waitFor(() => events.find((m) => m.t === 'tick'), 90000, 500);
 tick ? pass('Tablet oynarken konumunu düzenli bildiriyor (kayma düzeltmesi)') : fail('tick yok');
 
-step('Tepki ve geri sayım');
-kardes.send({ t: 'react', emoji: '🔥' });
-const rx = await waitFor(() => player.evaluate(() => document.querySelector('[data-ortak-izle="stage"]').shadowRoot.querySelectorAll('.r').length), 40000, 300);
-rx ? pass('Tepki videonun üstünde uçtu') : fail('Tepki görünmedi');
-await ui.click('#tCount');
-const cd = await waitFor(() => events.find((m) => m.t === 'countdown'), 60000, 300);
-cd ? pass('3-2-1 geri sayımı kardeşe gitti') : fail('Geri sayım gitmedi');
-await sleep(1200);
-SHOT('6-geri-sayim');
-await sleep(4000);
-const afterCd = await player.evaluate(() => ({ paused: v.paused, t: v.currentTime }));
-!afterCd.paused ? pass(`Geri sayım bitince oynamaya başladı (${afterCd.t.toFixed(1)} sn)`) : fail('Geri sayım sonrası oynamadı');
+step('Masaüstü kimliği');
+const ua = await player.evaluate(() => ({ ua: navigator.userAgent, platform: navigator.platform, mobile: navigator.userAgentData ? navigator.userAgentData.mobile : null }));
+/Windows NT/.test(ua.ua) && ua.platform === 'Win32' && ua.mobile !== true ? pass('Oynatıcı masaüstü Chrome gibi görünüyor (Windows, Win32, mobil değil)') : fail('Masaüstü kimliği: ' + JSON.stringify(ua));
 
-step('Paneli gizle (tam ekran + yüzen düğme)');
+step('Tepki, akan mesaj ve uyarılar (Android katmanı)');
+// Ekrandaki gerçek Android görünümleri (uiautomator) içinde yazı ara
+// Ekrandaki Android görünümleri yerine (video oynarken uiautomator ekranı okuyamıyor ve yavaş
+// emülatörü kilitliyor) test sürümünün günlüğüne bakılır: katmana gelen her şey "Katman: {...}",
+// onay pencereleri "Onay: ...", geri düğmesinin yeri "Geri düğmesi: x y" olarak yazılır.
+const logLines = () => adb('logcat -d -s OrtakIzle').split('\n');
+const katman = (re) => logLines().some((l) => /Katman:/.test(l) && re.test(l));
+async function seeOverlay(logRe, ms = 20000) {
+  return waitFor(() => katman(logRe), ms, 700);
+}
+function backButtonAt() {
+  const l = logLines().filter((x) => /Geri düğmesi: \d+ \d+/.test(x)).pop();
+  const m = l && l.match(/Geri düğmesi: (\d+) (\d+)/);
+  return m ? { x: +m[1], y: +m[2] } : null;
+}
+kardes.send({ t: 'react', emoji: '🔥' });
+const rx = await seeOverlay(/"type":"react".*🔥|🔥.*"type":"react"/, 15000);
+rx ? pass('Tepki Android katmanına ulaştı (videonun üstünde uçar)') : fail('Tepki katmana gelmedi');
 await ui.click('#collapseBtn');
 await sleep(2500);
 SHOT('7-tam-ekran');
 const floatShown = await ui.visible('#vFloat');
-floatShown ? pass('Tam ekran: yüzen sohbet düğmesi görünüyor') : fail('Yüzen düğme yok');
+floatShown ? pass('Sadece video: yüzen sohbet düğmesi görünüyor') : fail('Yüzen düğme yok');
 kardes.send({ t: 'chat', text: 'Bu sahne efsane' });
-await sleep(2500);
-SHOT('8-tam-ekran-mesaj');
+const ticker = await seeOverlay(/"type":"msg".*Bu sahne efsane|Bu sahne efsane.*"type":"msg"/, 20000);
+ticker ? pass('Sohbet kapalıyken mesaj katmana gitti (videonun altından akar)') : fail('Akan mesaj katmana gelmedi');
+SHOT('8-akan-mesaj');
+const backBtn = await waitFor(() => backButtonAt(), 10000, 700);
+backBtn && backBtn.x < 400 && backBtn.y < 400 ? pass(`Sol üstte ayrı geri düğmesi var (${backBtn.x},${backBtn.y})`) : fail('Geri düğmesi bulunamadı: ' + JSON.stringify(backBtn));
+
+step('Geri sayım (aynı kareden, aynı anda)');
 await ui.click('#fOpen');
 await sleep(2000);
+await ui.click('#tCount');
+const cd = await waitFor(() => events.find((m) => m.t === 'countdown'), 60000, 300);
+cd ? pass('3-2-1 geri sayımı kardeşe gitti') : fail('Geri sayım gitmedi');
+await sleep(800);
+SHOT('6-geri-sayim');
+await sleep(4500);
+const afterCd = await player.evaluate(() => ({ paused: v.paused, t: v.currentTime }));
+!afterCd.paused ? pass(`Geri sayım bitince oynamaya başladı (${afterCd.t.toFixed(1)} sn)`) : fail('Geri sayım sonrası oynamadı');
+
+step('Kardeş bölümden çıkınca tablette video durur ve uyarı çıkar');
+kardes.send({ t: 'nav', url: 'http://10.0.2.2:8900/play/loki', title: 'Loki', platform: '10.0.2.2', watching: true });
+await sleep(1500);
+kardes.send({ t: 'nav', url: 'http://10.0.2.2:8900/', title: '', platform: '10.0.2.2', watching: false });
+const stopped = await waitFor(() => player.evaluate(() => v.paused), 30000, 300);
+stopped ? pass('Kardeş çıkınca tablette video durdu') : fail('Video durmadı');
+const warn = await seeOverlay(/"type":"notice".*bölümden çıktı|bölümden çıktı.*"type":"notice"/, 15000);
+warn ? pass('Ekrana "Kardeş bölümden çıktı · video durduruldu" uyarısı gitti') : fail('Uyarı katmana gelmedi');
+SHOT('9-cikti-uyarisi');
 
 step('Dikey ekran');
 adb('shell settings put system accelerometer_rotation 0');
 adb('shell settings put system user_rotation 1');
 await sleep(6000);
-SHOT('9-dikey');
+SHOT('10-yatay');
 adb('shell settings put system user_rotation 0');
 await sleep(4000);
 
-step('Ana ekrana dönüş ve geri tuşu');
-await ui.click('#homeBtn');
+step('Geri tuşu kazara çıkarmaz, onay sorar');
+await player.evaluate(() => (window.tap && tap(), v.play()));
+await sleep(2000);
+const onaylar = () => adb('logcat -d -s OrtakIzle').split('\n').filter((l) => /Onay: Bölümden çıkılsın mı/.test(l)).length;
+const o0 = onaylar();
+adb('shell input keyevent 4');
+const dlg = await waitFor(() => onaylar() > o0, 20000, 700);
+dlg ? pass('Geri tuşunda "Bölümden çıkılsın mı?" onayı açıldı') : fail('Onay penceresi açılmadı');
+await sleep(1500);
+SHOT('11-onay');
+adb('shell input keyevent 4'); // pencereyi kapat = vazgeç
 await sleep(2500);
-(await ui.visible('#vLobby')) ? pass('Ana ekrana dönüldü') : fail('Ana ekrana dönülmedi');
-SHOT('10-ana-ekran');
+(await ui.visible('#vWatch')) && !(await player.evaluate(() => v.paused)) ? pass('Vazgeçince bölümde kalındı, video sürüyor') : fail('Bölümden çıkıldı ya da video durdu');
+// Sol üstteki geri düğmesine dokun
+const btn = backButtonAt() || { x: 70, y: 116 };
+const o1 = onaylar();
+adb(`shell input tap ${btn.x} ${btn.y}`);
+const dlg2 = await waitFor(() => onaylar() > o1, 20000, 700);
+dlg2 ? pass('Sol üstteki geri düğmesi de onay soruyor') : fail('Geri düğmesi onay sormadı');
+await sleep(1500);
+SHOT('11b-onay-dugme');
+// "Çık"a dokunmak yerine pencereyi kapatıp onayı arayüze doğrudan veriyoruz (düğmenin yeri dile göre değişir)
+adb('shell input keyevent 4');
+await sleep(800);
+await ui.evaluate(() => OI.onConfirm('exit', true));
+const pausedMsg = await waitFor(() => events.find((m) => m.t === 'sync' && m.action === 'pause' && m.from && Date.now() - (m.at || 0) < 30000), 20000, 300);
+pausedMsg ? pass('Çıkarken önce herkeste durduruldu') : fail('Çıkarken durdurma gitmedi');
+const home = await waitFor(() => ui.visible('#vLobby'), 20000);
+home ? pass('Onaylayınca ana ekrana dönüldü') : fail('Ana ekrana dönülmedi');
+SHOT('12-ana-ekran');
+
+if (process.env.UPDATE_DIR) {
+  step('Uygulama içi güncelleme (eskisini silmeden)');
+  adb('shell appops set com.ortakizle.app REQUEST_INSTALL_PACKAGES allow');
+  const card = await waitFor(() => ui.visible('#updateCard'), 60000, 1000);
+  card ? pass('Ana ekranda güncelleme kartı çıktı: ' + (await ui.text('#updTitle'))) : fail('Güncelleme kartı çıkmadı');
+  SHOT('13-guncelleme-karti');
+  await ui.click('#updGo');
+  const inst = await waitFor(() => /packageinstaller/i.test(adb('shell dumpsys activity activities | grep -i -E "topResumedActivity|mResumedActivity"')), 180000, 3000);
+  inst ? pass('İndirildi, imza doğrulandı, Android kurulum ekranı açıldı') : fail('Kurulum ekranı açılmadı: ' + (await ui.text('#updText').catch(() => '?')));
+  SHOT('14-kurulum');
+  if (inst) {
+    // Video oynamadığı için burada ekran okunabilir: kurulum düğmesini bul ve dokun
+    let xml = '';
+    try {
+      adb('shell uiautomator dump /sdcard/oi.xml');
+      xml = adb('shell cat /sdcard/oi.xml');
+    } catch {}
+    const node = [...xml.matchAll(/<node [^>]*>/g)].map((m) => m[0]).find((n) => /text="(UPDATE|INSTALL|Update|Install|GÜNCELLE|Güncelle|YÜKLE|Yükle)"/.test(n));
+    const b = node && node.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+    if (b) adb(`shell input tap ${(+b[1] + +b[3]) >> 1} ${(+b[2] + +b[4]) >> 1}`);
+    else for (const k of [61, 61, 66]) adb(`shell input keyevent ${k}`); // klavyeyle: sekme + giriş
+    const ok = await waitFor(() => /versionCode=7/.test(adb('shell dumpsys package com.ortakizle.app')), 180000, 3000);
+    ok ? pass('Güncelleme üstüne kuruldu (sürüm kodu 7, eskisi silinmedi)') : fail('Güncelleme kurulmadı');
+  }
+}
 
 const crash = adb('logcat -d -b crash');
 crash.includes('com.ortakizle') ? fail('Çökme kaydı var:\n' + crash.slice(0, 2000)) : pass('Çökme kaydı yok');

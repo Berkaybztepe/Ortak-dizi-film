@@ -29,6 +29,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.app.AlertDialog
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -61,7 +62,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var root: FrameLayout
     private lateinit var playerBox: FrameLayout
     private lateinit var ui: WebView
+    private lateinit var overlay: PlayerOverlay
     private var player: WebView? = null
+    private var backAllowed = true
+    private var installAfterPermission = false
     private var popup: View? = null
     private var popupWeb: WebView? = null
     private var customView: View? = null
@@ -98,6 +102,9 @@ class MainActivity : ComponentActivity() {
             visibility = View.GONE
         }
         ui = WebView(this)
+        // Oynatıcının üstündeki yerel katman (geri düğmesi, tepkiler, mesajlar, uyarılar)
+        overlay = PlayerOverlay(this) { js("window.OI && OI.onBack('button')") }
+        playerBox.addView(overlay, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         root.addView(playerBox, FrameLayout.LayoutParams(0, 0))
         root.addView(ui, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(root)
@@ -157,6 +164,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         js("window.OI && OI.onResume()")
+        // "Bilinmeyen uygulamaları yükle" izni verilip dönüldüyse kuruluma devam et
+        if (installAfterPermission && Updater.pending != null && Updater.canInstall(this)) {
+            installAfterPermission = false
+            Updater.install(this)
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -173,6 +185,7 @@ class MainActivity : ComponentActivity() {
             val tcp = intent?.getStringExtra("araci_tcp")
             val ws = intent?.getStringExtra("araci_ws")
             if (tcp != null) Host.testBrokers = tcp.split(',')
+            intent?.getStringExtra("guncelleme_url")?.let { Updater.testBase = it }
             if (ws != null && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 @SuppressLint("RequiresFeature")
                 fun add() = WebViewCompat.addDocumentStartJavaScript(
@@ -300,7 +313,10 @@ class MainActivity : ComponentActivity() {
         fun setDesktopMode(on: Boolean) = runOnUiThread {
             if (desktopMode != on) {
                 desktopMode = on
-                player?.let { applyUserAgent(it) }
+                player?.let {
+                    playerDesktop = wantsDesktop(it.url)
+                    applyUserAgent(it)
+                }
             }
         }
 
@@ -308,6 +324,83 @@ class MainActivity : ComponentActivity() {
         fun keepScreenOn(on: Boolean) = runOnUiThread {
             if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+
+        // Oynatıcı katmanı: {type: react|msg|notice|note|count|back|clear, ...}
+        @JavascriptInterface
+        fun overlay(json: String) = runOnUiThread {
+            val o = try { JSONObject(json) } catch (_: Exception) { return@runOnUiThread }
+            if (BuildConfig.DEBUG) Log.i(TAG, "Katman: $o")
+            when (o.optString("type")) {
+                "react" -> if (watching) overlay.react(o.optString("emoji").take(16), o.optString("name").take(30))
+                "msg" -> if (watching) overlay.message(o.optString("name").take(30), o.optString("text").take(300))
+                "notice" -> if (watching) overlay.notice(o.optString("text").take(200), o.optLong("ms", 4500))
+                "note" -> overlay.note(o.optString("text").takeIf { o.has("text") && !o.isNull("text") }?.take(120))
+                "count" -> overlay.countdown(o.optLong("ms"))
+                "back" -> {
+                    backAllowed = o.optBoolean("show", true)
+                    overlay.setBackVisible(watching && backAllowed)
+                }
+            }
+        }
+
+        // Onay penceresi; sonuç OI.onConfirm(id, evet/hayır) ile döner
+        @JavascriptInterface
+        fun confirm(json: String) = runOnUiThread {
+            val o = try { JSONObject(json) } catch (_: Exception) { return@runOnUiThread }
+            val id = JSONObject.quote(o.optString("id"))
+            if (BuildConfig.DEBUG) Log.i(TAG, "Onay: ${o.optString("title")}")
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle(o.optString("title"))
+                .setMessage(o.optString("text"))
+                .setPositiveButton(o.optString("ok", "Tamam")) { _, _ -> js("OI.onConfirm($id, true)") }
+                .setNegativeButton(o.optString("cancel", "Vazgeç")) { _, _ -> js("OI.onConfirm($id, false)") }
+                .setOnCancelListener { js("OI.onConfirm($id, false)") }
+                .show()
+        }
+
+        // Oynatıcıda bir sayfa geri; geçmiş yoksa ana ekrana dön
+        @JavascriptInterface
+        fun playerBack() = runOnUiThread {
+            val p = player
+            if (p != null && p.canGoBack()) p.goBack() else closePlayer(notify = true)
+        }
+
+        @JavascriptInterface
+        fun appVersion(): String = JSONObject().put("name", BuildConfig.VERSION_NAME).put("code", BuildConfig.VERSION_CODE).toString()
+
+        // Yeni sürüm var mı? Sonuç OI.onUpdate(bilgi | null) ile döner
+        @JavascriptInterface
+        fun checkUpdate() {
+            Thread {
+                val info = Updater.check()
+                lastUpdate = info
+                js("OI.onUpdate(${info?.toJson() ?: "null"})")
+            }.start()
+        }
+
+        // Yeni sürümü indir ve kurulum ekranını aç; ilerleme OI.onUpdateProgress(yüzde | hata)
+        @JavascriptInterface
+        fun installUpdate() {
+            val info = lastUpdate ?: return
+            Thread {
+                val err = Updater.download(this@MainActivity, info) { p -> js("OI.onUpdateProgress($p)") }
+                if (err != null) {
+                    js("OI.onUpdateProgress(${JSONObject.quote(err)})")
+                    return@Thread
+                }
+                js("OI.onUpdateProgress(100)")
+                runOnUiThread {
+                    when (val r = Updater.install(this@MainActivity)) {
+                        null -> {}
+                        "izin" -> {
+                            installAfterPermission = true
+                            js("OI.onUpdateProgress(${JSONObject.quote("izin")})")
+                        }
+                        else -> js("OI.onUpdateProgress(${JSONObject.quote(r)})")
+                    }
+                }
+            }.start()
         }
 
         @JavascriptInterface
@@ -361,7 +454,8 @@ class MainActivity : ComponentActivity() {
                 }
               } catch (e) {}
               function start() {
-                var engine = OrtakIzleEngine.create({ post: post, displayFont: 'OI Sans' });
+                // Tepki, geri sayım ve notlar Android katmanında çizilir (stage: false)
+                var engine = OrtakIzleEngine.create({ post: post, displayFont: 'OI Sans', stage: false });
                 window.__ortakIzleRecv = function (m) { engine.receive(typeof m === 'string' ? JSON.parse(m) : m); };
               }
               if (document.body) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
@@ -373,7 +467,7 @@ class MainActivity : ComponentActivity() {
     // Oynatıcı sayfasından gelen mesajı doğrula ve arayüze ilet. Sayfa güvenilmez
     // olduğu için yalnızca bilinen türler geçer ve JSON yeniden üretilir.
     private val allowedFromPlayer = setOf(
-        "hello", "engine", "sync", "tick", "nav", "buffer", "countdown", "react", "invite", "typing",
+        "hello", "engine", "sync", "tick", "nav", "buffer", "countdown", "react", "invite", "typing", "drift", "notice",
     )
 
     private fun fromPlayer(raw: String) {
@@ -400,7 +494,7 @@ class MainActivity : ComponentActivity() {
         }
         val docStart = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
         if (docStart) {
-            if (desktopMode) WebViewCompat.addDocumentStartJavaScript(wv, desktopPlatformScript, setOf("*"))
+            WebViewCompat.addDocumentStartJavaScript(wv, desktopPlatformScript, setOf("*"))
             WebViewCompat.addDocumentStartJavaScript(wv, bootstrapScript(), setOf("*"))
         }
 
@@ -410,7 +504,10 @@ class MainActivity : ComponentActivity() {
 
             override fun onPageFinished(view: WebView, url: String?) {
                 // Eski WebView'larda belge başı betiği yoksa sayfa yüklenince ekle
-                if (!docStart) view.evaluateJavascript(bootstrapScript(), null)
+                if (!docStart) {
+                    view.evaluateJavascript(desktopPlatformScript, null)
+                    view.evaluateJavascript(bootstrapScript(), null)
+                }
             }
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
@@ -442,6 +539,7 @@ class MainActivity : ComponentActivity() {
                 customView = view
                 customCallback = callback
                 playerBox.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                overlay.bringToFront() // tam ekranda da tepkiler ve geri düğmesi görünsün
                 relayout()
             }
 
@@ -495,10 +593,20 @@ class MainActivity : ComponentActivity() {
 
     // Disney+ ve HBO Max telefonda web oynatıcıyı yalnızca masaüstü tarayıcıya açıyor.
     // Masaüstü modunda Windows'taki Chrome gibi görünürüz; değilse "wv" işaretini kaldırırız.
-    private fun applyUserAgent(wv: WebView) {
+    // Bu platformlar telefonda web oynatıcıyı yalnızca masaüstü tarayıcıya açar: ayardan bağımsız
+    // her zaman masaüstü kimliğiyle açılır
+    private val desktopHosts = Regex("(^|\\.)(disneyplus\\.com|hbomax\\.com|max\\.com|netflix\\.com|primevideo\\.com|amazon\\.[a-z.]+|tv\\.apple\\.com|apple\\.com)$")
+    private var playerDesktop = true
+
+    private fun wantsDesktop(url: String?): Boolean {
+        val host = url?.let { Uri.parse(it).host?.lowercase() } ?: return desktopMode
+        return desktopMode || desktopHosts.containsMatchIn(host)
+    }
+
+    private fun applyUserAgent(wv: WebView, desktop: Boolean = playerDesktop) {
         val def = WebSettings.getDefaultUserAgent(this)
         val chrome = Regex("Chrome/(\\d+)").find(def)?.groupValues?.get(1) ?: "130"
-        wv.settings.userAgentString = if (desktopMode) {
+        wv.settings.userAgentString = if (desktop) {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$chrome.0.0.0 Safari/537.36"
         } else {
             def.replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+ "), "")
@@ -507,7 +615,7 @@ class MainActivity : ComponentActivity() {
         // masaüstü modunda onu da Windows'taki Chrome gibi göster
         if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
             if (defaultUaMetadata == null) defaultUaMetadata = WebSettingsCompat.getUserAgentMetadata(wv.settings)
-            val meta = if (desktopMode) {
+            val meta = if (desktop) {
                 fun brand(name: String, major: String) =
                     UserAgentMetadata.BrandVersion.Builder().setBrand(name).setMajorVersion(major).setFullVersion("$major.0.0.0").build()
                 UserAgentMetadata.Builder()
@@ -528,12 +636,33 @@ class MainActivity : ComponentActivity() {
     }
 
     private var defaultUaMetadata: UserAgentMetadata? = null
+    @Volatile private var lastUpdate: Updater.Info? = null
 
-    // Masaüstü modunda navigator.platform da Windows dönsün (bazı siteler buna bakıyor)
+    // Masaüstü kimliğiyle açıldıysa sayfanın gördüğü diğer bilgiler de Windows'taki Chrome gibi olsun
+    // (bazı siteler User-Agent dışında navigator.platform / userAgentData / dokunmatik ekrana bakıyor)
     private val desktopPlatformScript = """
         (function () {
+          if (!/Windows NT/.test(navigator.userAgent)) return;
+          function def(o, k, v) { try { Object.defineProperty(o, k, { get: function () { return v; }, configurable: true }); } catch (e) {} }
+          def(Navigator.prototype, 'platform', 'Win32');
+          def(Navigator.prototype, 'vendor', 'Google Inc.');
+          if (/netflix\.com${'$'}/.test(location.hostname)) def(Navigator.prototype, 'maxTouchPoints', 0);
           try {
-            Object.defineProperty(Navigator.prototype, 'platform', { get: function () { return 'Win32'; }, configurable: true });
+            var u = navigator.userAgentData;
+            if (!u || u.mobile || u.platform !== 'Windows') {
+              var v = (navigator.userAgent.match(/Chrome\/(\d+)/) || [])[1] || '130';
+              var brands = [{ brand: 'Chromium', version: v }, { brand: 'Google Chrome', version: v }, { brand: 'Not_A Brand', version: '24' }];
+              var fake = {
+                brands: brands, mobile: false, platform: 'Windows',
+                getHighEntropyValues: function () {
+                  return Promise.resolve({ brands: brands, mobile: false, platform: 'Windows', platformVersion: '15.0.0',
+                    architecture: 'x86', bitness: '64', model: '', uaFullVersion: v + '.0.0.0',
+                    fullVersionList: brands.map(function (b) { return { brand: b.brand, version: b.version + '.0.0.0' }; }) });
+                },
+                toJSON: function () { return { brands: brands, mobile: false, platform: 'Windows' }; }
+              };
+              def(Navigator.prototype, 'userAgentData', fake);
+            }
           } catch (e) {}
         })();
     """.trimIndent()
@@ -558,11 +687,15 @@ class MainActivity : ComponentActivity() {
             player = it
             playerBox.addView(it, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
+        playerDesktop = wantsDesktop(url)
         applyUserAgent(wv)
         wv.loadUrl(url)
         watching = true
         panelOpen = true
         playerBox.visibility = View.VISIBLE
+        overlay.clear()
+        overlay.setBackVisible(backAllowed)
+        overlay.bringToFront()
         relayout()
     }
 
@@ -577,6 +710,8 @@ class MainActivity : ComponentActivity() {
         }
         player = null
         watching = false
+        overlay.clear()
+        overlay.setBackVisible(false)
         playerBox.visibility = View.GONE
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         relayout()
@@ -664,6 +799,9 @@ class MainActivity : ComponentActivity() {
                 if (w != null && w.canGoBack()) w.goBack() else closePopup()
             }
             customView != null -> hideCustomView()
+            // İzlerken geri hareketi kazara bölümden çıkarmasın: arayüz karar verir (onay sorar,
+            // kilitliyse engeller). Arayüz yoksa eski davranış.
+            watching && !uiDead -> js("window.OI ? OI.onBack('system') : OrtakNative.playerBack()")
             watching -> {
                 val p = player
                 if (p != null && p.canGoBack()) p.goBack() else closePlayer(notify = true)
@@ -705,6 +843,8 @@ class MainActivity : ComponentActivity() {
         val ah = bottom - top
 
         popup?.let { place(it, left, top, aw, ah) }
+        // Tam ekranda (sistem çubukları gizli) geri düğmesi çentiğe denk gelmesin
+        if (!watching || (!panelOpen || fullscreen)) overlay.setInsets(il, itop) else overlay.setInsets(0, 0)
 
         val mode: String
         if (!watching) {
@@ -735,6 +875,9 @@ class MainActivity : ComponentActivity() {
         }
         ui.bringToFront()
         popup?.bringToFront()
+        if (BuildConfig.DEBUG && watching) overlay.postDelayed({
+            overlay.backCenter()?.let { Log.i(TAG, "Geri düğmesi: ${it[0]} ${it[1]}") }
+        }, 400)
         if (mode != lastLayoutMode) {
             lastLayoutMode = mode
             js("window.OI && OI.setLayout(${JSONObject().put("mode", mode).put("fullscreen", fullscreen)})")

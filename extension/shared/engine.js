@@ -323,7 +323,8 @@
       } catch {}
     };
     // Bildirim: eklentide sayfadaki panele, uygulamada arayüze gider
-    const notify = opts.onNotice || ((text) => post({ t: 'notice', text }));
+    // kind 'sync': "X durdurdu" gibi; uygulamanın arayüzü bunları zaten kendisi gösteriyor
+    const notify = opts.onNotice || ((text, kind) => kind !== 'sync' && post({ t: 'notice', text }));
     // Uygulamada tepki ve geri sayım Android'in kendi katmanında çizilir (site ne yaparsa yapsın görünür)
     const visual = opts.stage !== false;
 
@@ -1059,7 +1060,7 @@
           // Planlı başlatma: aynı anda başla
           if (m.action === 'play' && typeof m.at === 'number' && m.at > serverNow() - 120) {
             joinStart(m, false);
-            notify(`${m.name} oynattı`);
+            notify(`${m.name} oynattı`, 'sync');
             break;
           }
           clearStart();
@@ -1078,7 +1079,8 @@
               ? `${m.name} oynattı`
               : m.action === 'pause'
                 ? `${m.name} durdurdu`
-                : `${m.name} ${fmt(m.time)} konumuna sardı`
+                : `${m.name} ${fmt(m.time)} konumuna sardı`,
+            'sync'
           );
           break;
         }

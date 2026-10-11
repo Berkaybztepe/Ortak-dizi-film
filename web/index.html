@@ -129,6 +129,16 @@
         </article>
       </section>
 
+      <section class="update" id="updateCard" hidden>
+        <div class="txt">
+          <span class="eyebrow">Yeni sürüm</span>
+          <b id="updTitle">Ortak İzle 2.4.0 hazır</b>
+          <span class="hint" id="updText">Eskisini silmeden üstüne kurulur; ayarların ve girişlerin kalır.</span>
+          <span class="bar" id="updBar" hidden><i id="updFill"></i></span>
+        </div>
+        <button class="btn primary" id="updGo">Güncelle</button>
+      </section>
+
       <section class="now" id="nowCard" hidden>
         <span class="avatar" id="nowAvatar">K</span>
         <div class="txt">
@@ -151,7 +161,8 @@
         <div class="section-head"><h2>Ayarlar</h2><button class="btn quiet sm" id="settingsClose">Kapat</button></div>
         <div class="settings">
           <label class="switch" for="setFollow"><span class="txt"><b>Diğeri bir şey açınca beni de götür</b><span>Kapalıyken sadece "Sen de aç" bildirimi gelir.</span></span><input type="checkbox" id="setFollow"></label>
-          <label class="switch" for="setDesktop" data-app-only><span class="txt"><b>Masaüstü görünümü</b><span>Disney+ ve HBO Max telefonda web oynatıcıyı yalnızca bu modda açar. Açık kalsın.</span></span><input type="checkbox" id="setDesktop"></label>
+          <label class="switch" for="setLock" id="lockRow" hidden><span class="txt"><b>Bölümü sadece ben seçeyim</b><span>Açıkken kardeşin bölüm değiştiremez, bölümden çıkamaz; sen ne açarsan onda da otomatik açılır.</span></span><input type="checkbox" id="setLock"></label>
+          <label class="switch" for="setDesktop" data-app-only><span class="txt"><b>Diğer sitelerde masaüstü görünümü</b><span>Disney+, HBO Max, Netflix, Prime Video ve Apple TV+ her zaman masaüstü görünümüyle açılır. Bu ayar listede olmayan siteler içindir.</span></span><input type="checkbox" id="setDesktop"></label>
           <label class="switch" for="setAwake" data-app-only><span class="txt"><b>İzlerken ekranı açık tut</b><span>Uzun sahnelerde ekran kararmasın.</span></span><input type="checkbox" id="setAwake"></label>
         </div>
         <form class="field" id="renameForm" autocomplete="off">
@@ -163,6 +174,10 @@
           <div class="row"><input class="input" id="passInput" type="password" placeholder="Sunucuda şifre yoksa boş bırak"><button class="btn" type="submit">Kaydet</button></div>
           <span class="hint" data-app-only>Odayı bu cihazda açarken de bu şifre kullanılır.</span>
         </form>
+        <div class="field" data-app-only>
+          <label>Uygulama sürümü</label>
+          <div class="row"><span class="hint" id="verHint" style="flex:1;align-self:center">—</span><button class="btn" type="button" id="updCheck">Güncellemeleri denetle</button></div>
+        </div>
         <div class="field" data-app-only>
           <label>Oda kodu</label>
           <div class="row"><span class="hint" id="codeHint" style="flex:1;align-self:center">Odayı ilk açtığında oluşur ve hep aynı kalır.</span><button class="btn" type="button" id="newCodeBtn">Yeni kod al</button></div>
@@ -181,9 +196,8 @@
   <!-- 4. İzlerken panel -->
   <section class="watch" id="vWatch" hidden>
     <div class="wbar">
-      <button class="btn quiet icon sm" id="homeBtn" title="Ana ekrana dön" aria-label="Ana ekrana dön"><svg class="i"><use href="#i-back"/></svg></button>
-      <div class="title"><small id="wPlatform" lang="en">Disney+</small><b id="wTitle">Bölüm seçiliyor</b></div>
-      <button class="btn quiet icon sm" id="collapseBtn" title="Paneli gizle" aria-label="Paneli gizle"><svg class="i"><use href="#i-collapse"/></svg></button>
+      <div class="title"><small id="wPlatform" lang="en">Disney+</small><b id="wTitle">Bölüm seçiliyor</b><span class="lockline" id="wLock" hidden></span></div>
+      <button class="btn sm" id="collapseBtn" title="Sohbeti gizle, sadece video" aria-label="Sohbeti gizle, sadece video"><svg class="i"><use href="#i-collapse"/></svg>Sadece video</button>
     </div>
     <div class="sync">
       <div class="tc-big" id="wTc">0:00<span class="of" id="wDur"></span></div>

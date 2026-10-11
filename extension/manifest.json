@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ortak İzle",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Disney+, HBO Max, Apple TV+ ve diğerlerinde birlikte izleme: ortak oynat/durdur/sar, sohbet, tepkiler, kim ne açtı.",
   "permissions": [
     "storage"
