@@ -68,12 +68,13 @@ Oda, uygulama arka plandayken de açık kalır. Kapatmak için karttaki ya da bi
 1. Ana ekranda platformu seç (örneğin **Disney+**). İlk seferde ortak hesabınla bir kez giriş yap; uygulama girişi hatırlar.
 2. Bir bölüm aç. Kardeşine "Berkay Loki açtı · **Sen de aç**" bildirimi gider; dokununca aynı bölümde, aynı saniyede açılır.
 3. Artık videonun kendi düğmeleriyle oynat, durdur, sar. Hepsi ikinizde birden olur.
+   **Ses dili ve altyazı** da her zamanki gibi oynatıcının kendi menüsünden seçilir (Disney+'ta sağ üstteki konuşma balonu, HBO Max'te sağ alttaki menü). Herkes kendi dilini ve altyazısını ayrı seçebilir; senkronu etkilemez.
 4. Panelde:
    - **Senkronla:** bir şey ters giderse diğerinin kaldığı yere atlar.
    - **3-2-1 başlat:** geri sayımla birlikte başlatır.
    - **Buraya çağır:** açtığın bölümü diğerine gönderir.
    - Altta sohbet ve tepkiler.
-5. Yatay tutunca video solda, panel sağda olur. Paneli gizleme düğmesiyle video tam ekrana geçer; sağ üstte küçük bir sohbet düğmesi kalır, mesajlar bildirim olarak görünür. Dikeyde video üstte, panel altta durur.
+5. Yatay tutunca video solda, panel sağda olur. Paneli gizleme düğmesiyle video tam ekrana geçer; sağ kenarın ortasında küçük bir sohbet düğmesi kalır (oynatıcının üst ve alt düğmelerini kapatmaz), mesajlar bildirim olarak görünür. Dikeyde video üstte, panel altta durur.
 
 Ayarlar (sağ üstteki dişli):
 - **Diğeri bir şey açınca beni de götür:** bildirim beklemeden otomatik geçer.

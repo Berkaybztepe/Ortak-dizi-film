@@ -39,6 +39,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.UserAgentMetadata
+import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -166,6 +168,19 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun setupUi() {
+        // Test sürümü: adb ile verilen yerel aracıları kullan (am start --es araci_tcp ... --es araci_ws ...)
+        if (BuildConfig.DEBUG) {
+            val tcp = intent?.getStringExtra("araci_tcp")
+            val ws = intent?.getStringExtra("araci_ws")
+            if (tcp != null) Host.testBrokers = tcp.split(',')
+            if (ws != null && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                @SuppressLint("RequiresFeature")
+                fun add() = WebViewCompat.addDocumentStartJavaScript(
+                    ui, "window.__ortakIzleBrokers = ${org.json.JSONArray(ws.split(','))};", setOf("*")
+                )
+                add()
+            }
+        }
         val loader = WebViewAssetLoader.Builder()
             .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this).let { h ->
                 WebViewAssetLoader.PathHandler { path -> h.handle("web/" + path.ifEmpty { "index.html" }) }
@@ -380,7 +395,10 @@ class MainActivity : ComponentActivity() {
             }, "OrtakIzleBridge")
         }
         val docStart = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
-        if (docStart) WebViewCompat.addDocumentStartJavaScript(wv, bootstrapScript(), setOf("*"))
+        if (docStart) {
+            if (desktopMode) WebViewCompat.addDocumentStartJavaScript(wv, desktopPlatformScript, setOf("*"))
+            WebViewCompat.addDocumentStartJavaScript(wv, bootstrapScript(), setOf("*"))
+        }
 
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
@@ -481,7 +499,40 @@ class MainActivity : ComponentActivity() {
         } else {
             def.replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+ "), "")
         }
+        // Siteler cihazı yalnızca User-Agent'tan değil "client hints" bilgisinden de anlıyor;
+        // masaüstü modunda onu da Windows'taki Chrome gibi göster
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+            if (defaultUaMetadata == null) defaultUaMetadata = WebSettingsCompat.getUserAgentMetadata(wv.settings)
+            val meta = if (desktopMode) {
+                fun brand(name: String, major: String) =
+                    UserAgentMetadata.BrandVersion.Builder().setBrand(name).setMajorVersion(major).setFullVersion("$major.0.0.0").build()
+                UserAgentMetadata.Builder()
+                    .setBrandVersionList(listOf(brand("Chromium", chrome), brand("Google Chrome", chrome), brand("Not_A Brand", "24")))
+                    .setFullVersion("$chrome.0.0.0")
+                    .setPlatform("Windows")
+                    .setPlatformVersion("15.0.0")
+                    .setArchitecture("x86")
+                    .setBitness(64)
+                    .setMobile(false)
+                    .setModel("")
+                    .build()
+            } else {
+                defaultUaMetadata
+            }
+            meta?.let { WebSettingsCompat.setUserAgentMetadata(wv.settings, it) }
+        }
     }
+
+    private var defaultUaMetadata: UserAgentMetadata? = null
+
+    // Masaüstü modunda navigator.platform da Windows dönsün (bazı siteler buna bakıyor)
+    private val desktopPlatformScript = """
+        (function () {
+          try {
+            Object.defineProperty(Navigator.prototype, 'platform', { get: function () { return 'Win32'; }, configurable: true });
+          } catch (e) {}
+        })();
+    """.trimIndent()
 
     // Uygulama mağazasına ya da platformun kendi uygulamasına atma bağlantılarını engelle
     private fun handleSpecialUrl(view: WebView, uri: Uri): Boolean {
@@ -661,7 +712,8 @@ class MainActivity : ComponentActivity() {
             place(playerBox, 0, 0, w, h)
             val fw = dp(if (floatW > 0) floatW else 120)
             val fh = dp(if (floatH > 0) floatH else 72)
-            place(ui, right - fw, top, fw, fh)
+            // Sağ kenarın ortası: oynatıcının üst ve alt düğmeleri (ses, altyazı, tam ekran) açık kalsın
+            place(ui, right - fw, top + max(0, (ah - fh) / 2), fw, fh)
         } else if (landscape) {
             mode = "side"
             val panel = min(dp(380), (aw * 0.42f).roundToInt())

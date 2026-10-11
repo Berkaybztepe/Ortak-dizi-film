@@ -24,6 +24,9 @@ object Host {
         private set
     @Volatile var relay: Relay? = null
         private set
+
+    /** Yalnızca test sürümünde: gerçek aracılar yerine kullanılacak aracı adresleri */
+    @Volatile var testBrokers: List<String>? = null
     private var nsdListener: NsdManager.RegistrationListener? = null
 
     val hosting: Boolean get() = server?.isRunning == true
@@ -68,7 +71,8 @@ object Host {
     private fun startRelay(code: String) {
         relay?.stop()
         val s = server ?: return
-        relay = Relay(code, s, log = { Log.i(TAG, it) }).also { r -> Thread { r.start() }.start() }
+        val brokers = testBrokers ?: com.ortakizle.core.DEFAULT_BROKERS
+        relay = Relay(code, s, brokers, log = { Log.i(TAG, it) }).also { r -> Thread { r.start() }.start() }
     }
 
     @Synchronized
