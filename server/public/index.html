@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ortak İzle</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --line: #2a2f3a; --text: #e8eaf0; --muted: #9098a8;
+    --accent: #7c5cff; --accent2: #22c39a; --me: #2b2550;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 16px; height: 100%; display: flex; flex-direction: column; gap: 12px; }
+  h1 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #e5484d; display: inline-block; }
+  .dot.on { background: var(--accent2); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px; }
+  input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: #0f1218; color: var(--text); font: inherit; }
+  button { padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff;
+    font: inherit; font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+  .row { display: flex; gap: 8px; }
+  .main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 260px; gap: 12px; }
+  @media (max-width: 700px) { .main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .members { order: -1; } }
+  .chat { display: flex; flex-direction: column; min-height: 0; padding: 0; }
+  .msgs { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; min-height: 200px; }
+  .msg { max-width: 85%; padding: 7px 11px; border-radius: 10px; background: #222733; word-wrap: break-word; }
+  .msg.me { align-self: flex-end; background: var(--me); }
+  .msg.sys { align-self: center; background: none; color: var(--muted); font-size: 13px; padding: 2px; }
+  .msg .who { font-size: 12px; color: var(--accent); font-weight: 600; }
+  .msg .time { font-size: 11px; color: var(--muted); margin-left: 6px; }
+  .composer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); }
+  .members ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .members li { font-size: 14px; }
+  .members .what { color: var(--muted); font-size: 12px; }
+  .members a { color: var(--accent2); }
+  .hidden { display: none !important; }
+  .err { color: #ff6b6b; font-size: 13px; margin-top: 8px; }
+  .state { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="dot" id="dot"></span> Ortak İzle <span class="state" id="state"></span></h1>
+
+  <div class="card" id="joinCard">
+    <label for="name">Adın</label>
+    <input id="name" maxlength="30" placeholder="ör. Berkay">
+    <label for="room">Oda adı (ikiniz de aynısını yazın)</label>
+    <input id="room" maxlength="40" placeholder="salon">
+    <label for="pw">Şifre (sunucuda ayarlıysa)</label>
+    <input id="pw" type="password" placeholder="boş bırakabilirsin">
+    <div style="margin-top:12px"><button id="joinBtn">Odaya gir</button></div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="main hidden" id="mainView">
+    <div class="card chat">
+      <div class="msgs" id="msgs"></div>
+      <form class="composer" id="form">
+        <input id="text" maxlength="1000" placeholder="Mesaj yaz…" autocomplete="off">
+        <button>Gönder</button>
+      </form>
+    </div>
+    <div class="card members">
+      <div style="font-weight:600;margin-bottom:8px">Odadakiler</div>
+      <ul id="members"></ul>
+      <div style="margin-top:14px"><button class="ghost" id="leaveBtn">Odadan çık</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const store = { get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+$('name').value = store.get('oi-name');
+$('room').value = store.get('oi-room') || 'salon';
+
+let ws, me = null, members = new Map(), retry = 0, wantJoin = false;
+
+function wsUrl() {
+  return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+}
+
+function connect() {
+  ws = new WebSocket(wsUrl());
+  ws.onopen = () => {
+    retry = 0;
+    $('dot').classList.add('on');
+    if (wantJoin) join();
+  };
+  ws.onclose = () => {
+    $('dot').classList.remove('on');
+    setTimeout(connect, Math.min(1000 * 2 ** retry++, 10000));
+  };
+  ws.onmessage = (e) => onMsg(JSON.parse(e.data));
+}
+
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+function join() {
+  send({ t: 'join', kind: 'web', name: $('name').value, room: $('room').value, password: $('pw').value });
+}
+
+function fmtTime(at) { return new Date(at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }); }
+
+function addMsg(m) {
+  const d = document.createElement('div');
+  if (m.system) { d.className = 'msg sys'; d.textContent = m.text; }
+  else {
+    d.className = 'msg' + (me && m.from === me.id ? ' me' : '');
+    const who = document.createElement('div');
+    who.className = 'who'; who.textContent = m.name;
+    const t = document.createElement('span'); t.className = 'time'; t.textContent = fmtTime(m.at);
+    who.appendChild(t);
+    const body = document.createElement('div'); body.textContent = m.text;
+    d.append(who, body);
+  }
+  const box = $('msgs');
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.appendChild(d);
+  if (atBottom || (me && m.from === me.id)) box.scrollTop = box.scrollHeight;
+}
+
+function renderMembers() {
+  const ul = $('members'); ul.textContent = '';
+  for (const m of members.values()) {
+    const li = document.createElement('li');
+    const n = document.createElement('div');
+    n.textContent = m.name + (me && m.id === me.id ? ' (sen)' : '') + (m.kind === 'web' ? ' · panel' : '');
+    li.appendChild(n);
+    const w = document.createElement('div'); w.className = 'what';
+    if (m.url) {
+      const a = document.createElement('a'); a.href = m.url; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = (m.platform ? m.platform + ': ' : '') + (m.title || 'açık sayfa');
+      w.appendChild(a);
+    } else w.textContent = m.kind === 'web' ? '' : 'henüz bir şey açmadı';
+    li.appendChild(w);
+    ul.appendChild(li);
+  }
+}
+
+function onMsg(m) {
+  switch (m.t) {
+    case 'welcome':
+      me = m.you; members = new Map(m.members.map((x) => [x.id, x]));
+      $('joinCard').classList.add('hidden'); $('mainView').classList.remove('hidden');
+      $('msgs').textContent = ''; m.history.forEach(addMsg); renderMembers();
+      $('state').textContent = '· oda: ' + m.room;
+      break;
+    case 'error':
+      $('err').textContent = m.message; wantJoin = false;
+      $('joinCard').classList.remove('hidden'); $('mainView').classList.add('hidden');
+      break;
+    case 'chat': addMsg(m); break;
+    case 'member-join': members.set(m.member.id, m.member); renderMembers(); break;
+    case 'member-leave': members.delete(m.member.id); renderMembers(); break;
+    case 'nav': members.set(m.member.id, m.member); renderMembers(); break;
+    case 'sync':
+      $('state').textContent = `· ${m.name}: ${m.action === 'play' ? '▶ oynattı' : m.action === 'pause' ? '⏸ durdurdu' : '⏩ sardı'}`;
+      break;
+  }
+}
+
+$('joinBtn').onclick = () => {
+  $('err').textContent = '';
+  store.set('oi-name', $('name').value); store.set('oi-room', $('room').value);
+  wantJoin = true; join();
+};
+$('form').onsubmit = (e) => {
+  e.preventDefault();
+  const text = $('text').value.trim();
+  if (text) { send({ t: 'chat', text }); $('text').value = ''; }
+};
+$('leaveBtn').onclick = () => { wantJoin = false; me = null; ws.close(); location.reload(); };
+connect();
+</script>
+</body>
+</html>

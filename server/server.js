@@ -1,0 +1,420 @@
+#!/usr/bin/env node
+// Ortak İzle — senkron + sohbet sunucusu.
+// Hiçbir npm paketi gerektirmez; Termux (Android tablet), Windows, macOS, Linux'ta
+// `node server.js` ile çalışır. Video akışını taşımaz: herkes kendi cihazında,
+// kendi (ortak) hesabıyla izler; sunucu sadece oynat/durdur/sar, sohbet ve
+// "kim ne açtı" bilgisini odadaki herkese iletir.
+
+'use strict';
+
+const http = require('http');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+const PORT = parseInt(process.env.PORT || '8787', 10);
+const PASSWORD = process.env.ODA_SIFRE || ''; // boşsa şifre sorulmaz
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const MAX_HISTORY = 100;
+const MAX_TEXT = 1000;
+
+// ---------------------------------------------------------------------------
+// Minimal WebSocket (RFC 6455) — sadece metin mesajları, ping/pong ve kapanış.
+// ---------------------------------------------------------------------------
+
+const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+
+class Socket {
+  constructor(sock) {
+    this.sock = sock;
+    this.buf = Buffer.alloc(0);
+    this.fragments = [];
+    this.open = true;
+    this.alive = true;
+    this.onmessage = () => {};
+    this.onclose = () => {};
+    sock.setNoDelay(true);
+    sock.on('data', (d) => this._data(d));
+    sock.on('close', () => this._closed());
+    sock.on('error', () => this._closed());
+  }
+
+  _closed() {
+    if (!this.open) return;
+    this.open = false;
+    this.onclose();
+  }
+
+  _data(chunk) {
+    this.buf = Buffer.concat([this.buf, chunk]);
+    for (;;) {
+      if (this.buf.length < 2) return;
+      const b0 = this.buf[0];
+      const b1 = this.buf[1];
+      const fin = (b0 & 0x80) !== 0;
+      const opcode = b0 & 0x0f;
+      const masked = (b1 & 0x80) !== 0;
+      let len = b1 & 0x7f;
+      let off = 2;
+      if (len === 126) {
+        if (this.buf.length < 4) return;
+        len = this.buf.readUInt16BE(2);
+        off = 4;
+      } else if (len === 127) {
+        if (this.buf.length < 10) return;
+        const big = this.buf.readBigUInt64BE(2);
+        if (big > 1n << 20n) return this.close(1009); // 1 MB üstü reddedilir
+        len = Number(big);
+        off = 10;
+      }
+      if (len > 1 << 20) return this.close(1009);
+      const maskLen = masked ? 4 : 0;
+      if (this.buf.length < off + maskLen + len) return;
+      let payload = this.buf.subarray(off + maskLen, off + maskLen + len);
+      if (masked) {
+        const mask = this.buf.subarray(off, off + 4);
+        payload = Buffer.from(payload);
+        for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i & 3];
+      }
+      this.buf = this.buf.subarray(off + maskLen + len);
+      this._frame(fin, opcode, payload);
+      if (!this.open) return;
+    }
+  }
+
+  _frame(fin, opcode, payload) {
+    this.alive = true;
+    if (opcode === 0x8) return this.close(1000);
+    if (opcode === 0x9) return this._send(0xa, payload); // ping -> pong
+    if (opcode === 0xa) return; // pong
+    if (opcode === 0x1 || opcode === 0x0) {
+      this.fragments.push(payload);
+      if (!fin) return;
+      const text = Buffer.concat(this.fragments).toString('utf8');
+      this.fragments = [];
+      this.onmessage(text);
+    }
+  }
+
+  _send(opcode, payload) {
+    if (!this.open) return;
+    const len = payload.length;
+    let header;
+    if (len < 126) {
+      header = Buffer.from([0x80 | opcode, len]);
+    } else if (len < 65536) {
+      header = Buffer.alloc(4);
+      header[0] = 0x80 | opcode;
+      header[1] = 126;
+      header.writeUInt16BE(len, 2);
+    } else {
+      header = Buffer.alloc(10);
+      header[0] = 0x80 | opcode;
+      header[1] = 127;
+      header.writeBigUInt64BE(BigInt(len), 2);
+    }
+    try {
+      this.sock.write(Buffer.concat([header, payload]));
+    } catch {
+      this._closed();
+    }
+  }
+
+  send(obj) {
+    this._send(0x1, Buffer.from(JSON.stringify(obj), 'utf8'));
+  }
+
+  ping() {
+    this._send(0x9, Buffer.alloc(0));
+  }
+
+  close(code = 1000) {
+    if (!this.open) return;
+    const p = Buffer.alloc(2);
+    p.writeUInt16BE(code, 0);
+    this._send(0x8, p);
+    this.sock.end();
+    this._closed();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Odalar
+// ---------------------------------------------------------------------------
+
+/** @type {Map<string, {name:string, clients:Set<any>, history:any[], state:any}>} */
+const rooms = new Map();
+
+function getRoom(name) {
+  let room = rooms.get(name);
+  if (!room) {
+    room = {
+      name,
+      clients: new Set(),
+      history: [],
+      // Son bilinen oynatma durumu: `at` sunucu saati (ms) — oynarken
+      // güncel konum = time + (şimdi - at) / 1000
+      state: { paused: true, time: 0, at: Date.now(), url: null, by: null },
+    };
+    rooms.set(name, room);
+  }
+  return room;
+}
+
+function memberInfo(c) {
+  return { id: c.id, name: c.name, url: c.url, title: c.title, platform: c.platform, kind: c.kind };
+}
+
+function broadcast(room, msg, except) {
+  for (const c of room.clients) if (c !== except) c.ws.send(msg);
+}
+
+function cleanStr(v, max = 200) {
+  return typeof v === 'string' ? v.slice(0, max) : '';
+}
+
+function cleanNum(v) {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0;
+}
+
+function cleanUrl(v) {
+  if (typeof v !== 'string') return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href.slice(0, 2000) : null;
+  } catch {
+    return null;
+  }
+}
+
+function addSystemMessage(room, text) {
+  const msg = { t: 'chat', system: true, text, at: Date.now() };
+  room.history.push(msg);
+  if (room.history.length > MAX_HISTORY) room.history.shift();
+  broadcast(room, msg);
+}
+
+function handle(client, raw) {
+  let m;
+  try {
+    m = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (!m || typeof m !== 'object') return;
+
+  // Saat eşitleme her zaman serbest
+  if (m.t === 'ping') {
+    client.ws.send({ t: 'pong', c: m.c, s: Date.now() });
+    return;
+  }
+
+  if (m.t === 'join') {
+    if (PASSWORD && m.password !== PASSWORD) {
+      client.ws.send({ t: 'error', code: 'password', message: 'Şifre yanlış.' });
+      return;
+    }
+    const roomName = cleanStr(m.room, 40).trim().toLowerCase() || 'salon';
+    if (client.room) leave(client);
+    client.name = cleanStr(m.name, 30).trim() || 'Misafir';
+    client.kind = m.kind === 'web' ? 'web' : 'eklenti';
+    client.room = getRoom(roomName);
+    client.room.clients.add(client);
+    client.ws.send({
+      t: 'welcome',
+      you: memberInfo(client),
+      room: roomName,
+      members: [...client.room.clients].map(memberInfo),
+      state: client.room.state,
+      history: client.room.history,
+      now: Date.now(),
+    });
+    broadcast(client.room, { t: 'member-join', member: memberInfo(client) }, client);
+    addSystemMessage(client.room, `${client.name} odaya katıldı.`);
+    log(`[${roomName}] + ${client.name} (${client.kind})`);
+    return;
+  }
+
+  const room = client.room;
+  if (!room) {
+    client.ws.send({ t: 'error', code: 'nojoin', message: 'Önce odaya katılın.' });
+    return;
+  }
+
+  switch (m.t) {
+    case 'chat': {
+      const text = cleanStr(m.text, MAX_TEXT).trim();
+      if (!text) return;
+      const msg = { t: 'chat', from: client.id, name: client.name, text, at: Date.now() };
+      room.history.push(msg);
+      if (room.history.length > MAX_HISTORY) room.history.shift();
+      broadcast(room, msg);
+      return;
+    }
+
+    // Kullanıcı eliyle oynat / durdur / sar yaptı
+    case 'sync': {
+      const action = ['play', 'pause', 'seek'].includes(m.action) ? m.action : null;
+      if (!action) return;
+      const now = Date.now();
+      room.state = {
+        paused: action === 'pause' ? true : action === 'play' ? false : !!m.paused,
+        time: cleanNum(m.time),
+        at: now,
+        url: client.url,
+        by: client.id,
+      };
+      broadcast(room, { t: 'sync', action, ...room.state, from: client.id, name: client.name }, client);
+      return;
+    }
+
+    // Oynatırken düzenli konum bildirimi (kayma düzeltmesi için)
+    case 'tick': {
+      // Sadece son kumanda eden kişinin tick'i durumu belirler; aksi halde iki
+      // taraf birbirini sonsuza kadar düzeltmeye çalışır.
+      if (room.state.by && room.state.by !== client.id) return;
+      room.state = {
+        ...room.state,
+        paused: !!m.paused,
+        time: cleanNum(m.time),
+        at: Date.now(),
+        by: client.id,
+      };
+      broadcast(room, { t: 'tick', ...room.state, from: client.id }, client);
+      return;
+    }
+
+    // Kullanıcı bir dizi/film sayfası açtı
+    case 'nav': {
+      const url = cleanUrl(m.url);
+      client.url = url;
+      client.title = cleanStr(m.title, 200);
+      client.platform = cleanStr(m.platform, 30);
+      broadcast(room, { t: 'nav', member: memberInfo(client), watching: !!m.watching }, client);
+      return;
+    }
+
+    // Diğerlerinin tarayıcısına "buraya gel" isteği
+    case 'invite': {
+      const url = cleanUrl(m.url) || client.url;
+      if (!url) return;
+      broadcast(room, { t: 'invite', url, title: cleanStr(m.title, 200), from: client.id, name: client.name }, client);
+      addSystemMessage(room, `${client.name} herkesi davet etti: ${cleanStr(m.title, 200) || url}`);
+      return;
+    }
+
+    default:
+      return;
+  }
+}
+
+function leave(client) {
+  const room = client.room;
+  if (!room) return;
+  room.clients.delete(client);
+  client.room = null;
+  if (room.state.by === client.id) room.state.by = null;
+  broadcast(room, { t: 'member-leave', member: memberInfo(client) });
+  addSystemMessage(room, `${client.name} odadan ayrıldı.`);
+  log(`[${room.name}] - ${client.name}`);
+  if (room.clients.size === 0) {
+    // Boş odayı bir süre sonra temizle (yenileme sırasında geçmiş kaybolmasın)
+    setTimeout(() => {
+      if (room.clients.size === 0 && rooms.get(room.name) === room) rooms.delete(room.name);
+    }, 30 * 60 * 1000).unref();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP + WebSocket yükseltme
+// ---------------------------------------------------------------------------
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+};
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://x');
+  if (url.pathname === '/health') {
+    res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+    res.end(JSON.stringify({ ok: true, app: 'ortak-izle', rooms: rooms.size, password: !!PASSWORD }));
+    return;
+  }
+  let p = url.pathname === '/' ? '/index.html' : url.pathname;
+  const file = path.normalize(path.join(PUBLIC_DIR, p));
+  if (!file.startsWith(PUBLIC_DIR + path.sep)) {
+    res.writeHead(403).end();
+    return;
+  }
+  fs.readFile(file, (err, data) => {
+    if (err) {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('Bulunamadı');
+      return;
+    }
+    res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
+    res.end(data);
+  });
+});
+
+server.on('upgrade', (req, sock) => {
+  const key = req.headers['sec-websocket-key'];
+  if (!key || (req.headers.upgrade || '').toLowerCase() !== 'websocket') {
+    sock.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+    return;
+  }
+  const accept = crypto.createHash('sha1').update(key + WS_GUID).digest('base64');
+  sock.write(
+    'HTTP/1.1 101 Switching Protocols\r\n' +
+      'Upgrade: websocket\r\n' +
+      'Connection: Upgrade\r\n' +
+      `Sec-WebSocket-Accept: ${accept}\r\n\r\n`
+  );
+  const ws = new Socket(sock);
+  const client = { id: crypto.randomBytes(4).toString('hex'), ws, room: null, name: '', url: null };
+  ws.onmessage = (text) => handle(client, text);
+  ws.onclose = () => leave(client);
+});
+
+// Ölü bağlantıları temizle
+setInterval(() => {
+  for (const room of rooms.values()) {
+    for (const c of room.clients) {
+      if (!c.ws.alive) {
+        c.ws.close(1001);
+        continue;
+      }
+      c.ws.alive = false;
+      c.ws.ping();
+    }
+  }
+}, 30000).unref();
+
+function log(...a) {
+  console.log(new Date().toLocaleTimeString('tr-TR'), ...a);
+}
+
+function localAddresses() {
+  const out = [];
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const a of list || []) if (a.family === 'IPv4' && !a.internal) out.push(a.address);
+  }
+  return out;
+}
+
+if (require.main === module) {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log('\n  Ortak İzle sunucusu çalışıyor 🎬\n');
+    console.log(`  Bu cihazda:      http://localhost:${PORT}`);
+    for (const ip of localAddresses()) console.log(`  Aynı Wi-Fi'da:   http://${ip}:${PORT}`);
+    console.log(`\n  Eklentideki "Sunucu adresi" alanına yukarıdakilerden birini yazın.`);
+    console.log(`  Farklı evlerdeyseniz README'deki Tailscale adımlarına bakın.`);
+    console.log(PASSWORD ? '  Şifre: AÇIK (ODA_SIFRE)\n' : '  Şifre: kapalı (ODA_SIFRE ile açabilirsiniz)\n');
+  });
+}
+
+module.exports = { server };
