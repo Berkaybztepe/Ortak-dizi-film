@@ -1,7 +1,7 @@
 {
-  "versionCode": 11,
-  "versionName": "2.7.0",
+  "versionCode": 12,
+  "versionName": "2.7.1",
   "apk": "dist/OrtakIzle.apk",
-  "sha256": "4e527a5a5377493ba0b5960ed5a5eab5eb1bfadcc24e4c23c109515ebab9cc16",
-  "notes": "60'tan fazla gerçek kedi çıkartması (mutlu, dans, şok, ağlayan, aşık, Maxwell, Oiia, Pop…) + köpek, maymun; çıkartma araması; art arda basınca bozulmaz. Yüzen sohbet düğmesi klavye kapanırken zıplamaz."
+  "sha256": "b8cbc4ebae82045b20fec81ab394f805e14b49603ad5204b9b8095499eefc980",
+  "notes": "74 çıkartma: gerçek kediler (mutlu, dans, şok, ağlayan, aşık, Maxwell, Oiia, Pop…), dans eden kediler, köpek, maymun, pembe solucan ve Türk capsleri (Şafak Sezer, Kemal Sunal, Recep İvedik, Avrupa Yakası…); arama; art arda basınca bozulmaz."
 }

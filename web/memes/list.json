@@ -774,5 +774,119 @@
    "oturan"
   ],
   "img": true
+ },
+ {
+  "f": "dbeyaz",
+  "ad": "Dansçı Kedi",
+  "tags": [
+   "dans",
+   "kedi",
+   "eğlence",
+   "oyna",
+   "beyaz"
+  ],
+  "img": true
+ },
+ {
+  "f": "dkedo",
+  "ad": "Kedo",
+  "tags": [
+   "dans",
+   "kedi",
+   "eğlence",
+   "oyna",
+   "kedo"
+  ],
+  "img": true
+ },
+ {
+  "f": "dturuncu",
+  "ad": "Turuncu",
+  "tags": [
+   "dans",
+   "kedi",
+   "eğlence",
+   "oyna",
+   "turuncu"
+  ],
+  "img": true
+ },
+ {
+  "f": "msolucan",
+  "ad": "Solucan",
+  "tags": [
+   "solucan",
+   "kurt",
+   "şaşkın",
+   "sevimli"
+  ]
+ },
+ {
+  "f": "mturk",
+  "ad": "Abi",
+  "tags": [
+   "abi",
+   "türk",
+   "şafak sezer",
+   "bakış",
+   "shitpost"
+  ]
+ },
+ {
+  "f": "mkemal",
+  "ad": "Vay canına",
+  "tags": [
+   "kemal sunal",
+   "vay canına",
+   "ne diyo",
+   "şaşkın"
+  ]
+ },
+ {
+  "f": "mrecep",
+  "ad": "Recep",
+  "tags": [
+   "recep ivedik",
+   "şaşkın",
+   "komik"
+  ]
+ },
+ {
+  "f": "mbayil",
+  "ad": "Bayılazam",
+  "tags": [
+   "avrupa yakası",
+   "bayılazam",
+   "of",
+   "bıktım"
+  ]
+ },
+ {
+  "f": "mbiliyorum",
+  "ad": "Biliyorum",
+  "tags": [
+   "avrupa yakası",
+   "burhan",
+   "biliyorum"
+  ]
+ },
+ {
+  "f": "msus",
+  "ad": "Sus be",
+  "tags": [
+   "arka sokaklar",
+   "sus",
+   "terbiyesiz",
+   "kızgın"
+  ]
+ },
+ {
+  "f": "mparayok",
+  "ad": "Para yok",
+  "tags": [
+   "çok güzel hareketler",
+   "para yok",
+   "oğuzhan koç"
+  ]
  }
 ]
