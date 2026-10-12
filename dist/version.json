@@ -1,7 +1,7 @@
 {
-  "versionCode": 14,
-  "versionName": "2.7.3",
+  "versionCode": 15,
+  "versionName": "2.7.4",
   "apk": "dist/OrtakIzle.apk",
-  "sha256": "1cd545d1dd8e1ce53cdc7969d7a0346a20dbba19fa2ac63da96e69057fafce9c",
-  "notes": "Senin çıkartmaların en başta; 269 hareketli çıkartma"
+  "sha256": "2ef9abeb80aa429bcf52a1117d78bd007245bcd662c1f350b7e36c87fd8f1c09",
+  "notes": "WARP/VPN ile de bağlanır (443 portu)"
 }

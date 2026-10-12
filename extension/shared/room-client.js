@@ -41,6 +41,9 @@
     { ws: 'wss://broker.emqx.io:8084/mqtt', tcp: 'ssl://broker.emqx.io:8883' },
     { ws: 'wss://broker.hivemq.com:8884/mqtt', tcp: 'ssl://broker.hivemq.com:8883' },
     { ws: 'wss://test.mosquitto.org:8081/mqtt', tcp: 'ssl://test.mosquitto.org:8886' },
+    // 443 (HTTPS) portundan: VPN (ör. WARP) ya da sıkı ağlar diğer portları kesse de geçer
+    { ws: 'wss://mqtt.eclipseprojects.io/mqtt', tcp: 'wss://mqtt.eclipseprojects.io:443/mqtt' },
+    { ws: 'wss://public:public@public.cloud.shiftr.io/', tcp: 'wss://public:public@public.cloud.shiftr.io:443/' },
   ];
   const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // karışan harfler (I, L, O, 0, 1) yok
 
@@ -102,6 +105,13 @@
       this.connected = false;
       this.closed = false;
       this.pid = 1;
+      // Adresteki kullanıcı:şifre (ör. wss://public:public@...) WebSocket'e değil MQTT bağlanmasına gider
+      let auth = null;
+      const cred = /^(wss?:\/\/)([^@/]+)@(.*)$/.exec(url);
+      if (cred) {
+        auth = cred[2].split(':').map((x) => enc.encode(decodeURIComponent(x)));
+        url = cred[1] + cred[3];
+      }
       try {
         this.ws = new WebSocket(url, ['mqtt']);
       } catch {
@@ -113,7 +123,9 @@
       this.ackTimer = setTimeout(() => !this.connected && this._close(), 15000);
       this.ws.onopen = () => {
         const id = enc.encode(clientId);
-        const body = [0, 4, 77, 81, 84, 84, 4, 2, 0, 30, id.length >> 8, id.length & 255, ...id];
+        const flags = auth ? (auth.length > 1 ? 0xc2 : 0x82) : 2;
+        const body = [0, 4, 77, 81, 84, 84, 4, flags, 0, 30, id.length >> 8, id.length & 255, ...id];
+        for (const f of auth || []) body.push(f.length >> 8, f.length & 255, ...f);
         this._send(0x10, body);
       };
       this.ws.onmessage = (e) => {
