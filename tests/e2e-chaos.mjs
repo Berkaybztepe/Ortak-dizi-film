@@ -113,7 +113,20 @@ try {
   const held = await waitFor(() => both(A, B, (x, y) => x.paused && y.paused), 6000);
   held ? pass('Biri yüklenirken ikisi de bekledi') : fail('Beklemedi');
   const resumed = await waitFor(() => both(A, B, (x, y) => !x.paused && !y.paused), 20000, 500);
-  resumed ? pass('"Yükleme bitti" hiç gelmese de en geç 12 sn sonra devam edildi') : fail(`Sonsuza kadar bekledi: ${JSON.stringify([await vs(A.player), await vs(B.player)])}`);
+  resumed ? pass('"Yükleme bitti" hiç gelmese de ~10 sn sonra devam edildi') : fail(`Sonsuza kadar bekledi: ${JSON.stringify([await vs(A.player), await vs(B.player)])}`);
+
+  // Yavaş internet: yükleme 20 sn sürüyor ama yükleyen 4 sn'de bir haber veriyor → sonuna kadar beklenir
+  await sleep(1500);
+  ws.send(JSON.stringify({ t: 'buffer', on: true, again: true }));
+  const keep = setInterval(() => ws.send(JSON.stringify({ t: 'buffer', on: true, again: true })), 4000);
+  const held2 = await waitFor(() => both(A, B, (x, y) => x.paused && y.paused), 6000);
+  await sleep(18000);
+  const still = await both(A, B, (x, y) => x.paused && y.paused);
+  clearInterval(keep);
+  held2 && still ? pass('Uzun yüklemede (20 sn) ikisi de sonuna kadar bekledi') : fail('Uzun yüklemede beklemedi');
+  ws.send(JSON.stringify({ t: 'buffer', on: false }));
+  const resumed2 = await waitFor(() => both(A, B, (x, y) => !x.paused && !y.paused), 6000, 300);
+  resumed2 ? pass('Yükleme bitince ikisi birlikte devam etti') : fail('Yükleme bitince devam edilmedi');
   ws.close();
 
   for (const X of [A, B]) for (const l of X.log) fail(`${X.label}: ${l}`);

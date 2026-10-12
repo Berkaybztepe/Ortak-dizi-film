@@ -1,7 +1,7 @@
 {
-  "versionCode": 16,
-  "versionName": "2.7.5",
+  "versionCode": 17,
+  "versionName": "2.7.6",
   "apk": "dist/OrtakIzle.apk",
-  "sha256": "8513529cfd6f97094c40403337c8c0476c702f8c2ebda10d32fff744fdd96cca",
-  "notes": "Ana ekranda da emoji ve kedi çıkartmaları; WARP/VPN ile bağlantı"
+  "sha256": "2cb48b6e5216c86075c0e3ec92ab738e341cb5502c435055b59a56e3dc08c119",
+  "notes": "Biri yüklenirken (kötü internet) diğeri 60 sn'ye kadar bekler"
 }

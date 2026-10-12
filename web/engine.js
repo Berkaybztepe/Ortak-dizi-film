@@ -664,15 +664,24 @@
       pending.timer = setTimeout(flushLocal, 300);
     }
 
-    // Yükleniyor/bitti bilgisi kaybolursa diğeri boşuna bekler: değişiklik 1 ve 3 sn sonra tekrarlanır
+    // Yükleniyor/bitti bilgisi kaybolursa diğeri boşuna bekler: değişiklik 1 ve 3 sn sonra tekrarlanır.
+    // Yükleme sürdükçe 4 sn'de bir "hâlâ yükleniyorum" denir (diğerleri bu sürece bekler; ses kesilirse bırakır)
     let bufferRepeat = [];
+    let bufferAlive = null;
     function setBuffering(on) {
       if (on === bufferingSent) return;
       bufferingSent = on;
       for (const t of bufferRepeat) clearTimeout(t);
+      clearInterval(bufferAlive);
       if (!connected()) return;
       post({ t: 'buffer', on });
       bufferRepeat = [1000, 3000].map((ms) => setTimeout(() => connected() && bufferingSent === on && post({ t: 'buffer', on, again: true }), ms));
+      if (on) {
+        bufferAlive = setInterval(() => {
+          if (!bufferingSent || !video || video.paused || video.readyState >= 3) return setBuffering(false);
+          if (connected()) post({ t: 'buffer', on: true, again: true });
+        }, 4000);
+      }
     }
 
     // Şu anki konum (dakika biliniyorsa bölüm dakikası, yoksa videonun kendi zamanı)
@@ -910,15 +919,22 @@
       if (video && rateSet !== null) restoreRate();
     }
 
+    const bufAt = {}; // üye id -> son "yükleniyorum" haberi
+    function bufFresh(m) {
+      if (!(m.id in bufAt)) bufAt[m.id] = Date.now();
+      return Date.now() - bufAt[m.id] < 10000;
+    }
+
     // Başkası yükleniyorsa bekle, bitince devam et
     function updateHold() {
       if (!connected()) return standDown();
       const waitingFor = members.filter(
-        (m) => m.id !== me?.id && m.buffering && m.url && relatedContent(m.url)
+        (m) => m.id !== me?.id && m.buffering && m.url && relatedContent(m.url) && bufFresh(m)
       );
       if (!waitingFor.length) holdExpired = false;
-      // En fazla 12 sn bekle: "yükleme bitti" mesajı kaybolsa bile sonsuza kadar takılmayalım
-      if (holding && Date.now() - holdSince > 12000) {
+      // Yavaş internette yükleme uzun sürebilir: en fazla 60 sn bekle. Yükleyen 4 sn'de bir haber verir;
+      // 10 sn ses gelmezse (mesaj kayboldu, uygulama kapandı) beklemeyi bırakırız
+      if (holding && Date.now() - holdSince > 60000) {
         holdExpired = true;
         notify(`${waitingFor.map((m) => m.name).join(', ') || 'Diğeri'} hâlâ yükleniyor; beklemeden devam ediliyor`);
       }
@@ -1163,6 +1179,10 @@
           break;
         case 'nav':
         case 'buffer':
+          if (m.t === 'buffer') {
+            if (m.on) bufAt[m.member.id] = Date.now();
+            else delete bufAt[m.member.id];
+          }
           members = members.filter((x) => x.id !== m.member.id).concat(m.member);
           updateHold();
           break;
