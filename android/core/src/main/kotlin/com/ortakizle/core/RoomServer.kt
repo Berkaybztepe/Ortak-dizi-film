@@ -36,9 +36,9 @@ private const val MAX_HISTORY = 100
 private const val MAX_TEXT = 1000
 private val REACTIONS = listOf(
     "😂", "😮", "😱", "❤️", "👏", "🔥", "😢", "👀",
-    // Kedi tepkileri (uygulamada videonun üstünde sesli küçük kart olarak oynar)
-    "kedi:uzgun", "kedi:fiyonk", "kedi:gulen", "kedi:zipla", "kedi:sarilma", "kedi:dans", "kedi:selam", "kedi:sovalye", "kedi:asker", "kedi:samuray", "kedi:muah",
 )
+// Kedi çıkartmaları (uygulamanın içindeki dosya adı): kedi:<harfler>
+private val KEDI = Regex("kedi:[a-z]{2,24}")
 private val KINDS = listOf("app", "eklenti", "web")
 private const val COUNTDOWN_MS = 3500L
 // Planlı başlatma: istemci "şu sunucu anında başla" diyebilir (en fazla bu kadar ileri)
@@ -859,7 +859,7 @@ class RoomServer(
 
             // Hızlı tepki (videonun üstünde uçuşan emoji)
             "react" -> {
-                val emoji = jsString(m["emoji"])?.takeIf { it in REACTIONS } ?: return
+                val emoji = jsString(m["emoji"])?.takeIf { it in REACTIONS || KEDI.matches(it) } ?: return
                 broadcast(room, buildJsonObject {
                     put("t", "react")
                     put("emoji", emoji)

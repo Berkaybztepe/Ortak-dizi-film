@@ -21,8 +21,6 @@ const MAX_HISTORY = 100;
 const MAX_TEXT = 1000;
 const SERVER_NAME = (process.env.ODA_ADI || os.hostname() || 'Ortak İzle').slice(0, 40);
 const REACTIONS = ['😂', '😮', '😱', '❤️', '👏', '🔥', '😢', '👀'];
-// Kedi tepkileri (uygulamada videonun üstünde sesli küçük kart olarak oynar)
-const MEMES = ['kedi:uzgun', 'kedi:fiyonk', 'kedi:gulen', 'kedi:zipla', 'kedi:sarilma', 'kedi:dans', 'kedi:selam', 'kedi:sovalye', 'kedi:asker', 'kedi:samuray', 'kedi:muah'];
 const KINDS = ['app', 'eklenti', 'web'];
 const COUNTDOWN_MS = 3500;
 // Planlı başlatma: istemci "şu sunucu anında başla" diyebilir (en fazla bu kadar ileri)
@@ -448,7 +446,7 @@ function handle(client, raw) {
 
     // Hızlı tepki (videonun üstünde uçuşan emoji)
     case 'react': {
-      if (!REACTIONS.includes(m.emoji) && !MEMES.includes(m.emoji)) return;
+      if (!REACTIONS.includes(m.emoji) && !(typeof m.emoji === 'string' && /^kedi:[a-z]{2,24}$/.test(m.emoji))) return;
       broadcast(room, { t: 'react', emoji: m.emoji, from: client.id, name: client.name }, client);
       return;
     }

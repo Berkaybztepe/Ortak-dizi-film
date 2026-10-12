@@ -144,33 +144,41 @@
     { id: 'netflix', name: 'Netflix', url: 'https://www.netflix.com/', sub: 'Telefonda engelleyebilir' },
   ];
   const REACTIONS = ['😂', '😮', '😱', '❤️', '👏', '🔥', '😢', '👀'];
-  // Kedi tepkileri: dokununca ikinizde videonun üstünde (sesli) küçük kart olarak oynar
-  const MEMES = [
-    { id: 'kedi:uzgun', f: 'uzgun', ad: 'Üzgün', img: true },
-    { id: 'kedi:fiyonk', f: 'fiyonk', ad: 'Fiyonk', img: true },
-    { id: 'kedi:gulen', f: 'gulen', ad: 'Gülen' },
-    { id: 'kedi:zipla', f: 'zipla', ad: 'Zıplayan' },
-    { id: 'kedi:sarilma', f: 'sarilma', ad: 'Sarılma' },
-    { id: 'kedi:muah', f: 'muah', ad: 'Muah', img: true },
-    { id: 'kedi:dans', f: 'dans', ad: 'Dans' },
-    { id: 'kedi:selam', f: 'selam', ad: 'Selam' },
-    { id: 'kedi:sovalye', f: 'sovalye', ad: 'Şövalye' },
-    { id: 'kedi:samuray', f: 'samuray', ad: 'Samuray' },
-    { id: 'kedi:asker', f: 'asker', ad: 'Asker' },
-  ];
+  // Kedi çıkartmaları: dokununca ikinizde videonun üstünde (sesli) küçük kart olarak oynar.
+  // Liste memes/list.json'da (dosya adı, Türkçe ad, arama kelimeleri, resim mi video mu)
+  const MEMES = [];
+  const memeStrips = [];
+  fetch('memes/list.json')
+    .then((r) => r.json())
+    .then((list) => {
+      for (const x of list || []) if (x && /^[a-z]{2,24}$/.test(x.f)) MEMES.push({ id: 'kedi:' + x.f, f: x.f, ad: String(x.ad || x.f), img: !!x.img, tags: (x.tags || []).map(String) });
+      for (const fill of memeStrips) fill();
+    })
+    .catch(() => {});
   const memeOf = (id) => MEMES.find((x) => x.id === id);
-  // Kedi şeridi: küçük resimler; dokununca gönderir
+  // Kedi şeridi: arama kutusu + küçük resimler; dokununca gönderir
+  const fold = (t) => String(t).toLocaleLowerCase('tr').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ı/g, 'i');
   function memeStrip() {
-    return h(
-      'div',
-      { class: 'memes', role: 'group', 'aria-label': 'Kedi tepkileri' },
-      ...MEMES.map((x) =>
-        h('button', { type: 'button', class: 'meme', title: x.ad, 'aria-label': `Kedi tepkisi: ${x.ad}`, onclick: () => react(x.id) },
-          h('img', { src: `memes/${x.f}-k.jpg`, alt: '', loading: 'lazy', draggable: 'false' }),
-          h('span', null, x.ad))
-      )
-    );
+    const grid = h('div', { class: 'memegrid' });
+    const search = h('input', { class: 'input memesearch', type: 'search', placeholder: '🔍 Kedi ara: mutlu, ağla, dans…', 'aria-label': 'Kedi çıkartması ara', enterkeyhint: 'search' });
+    const fill = () => {
+      const q = fold(search.value.trim());
+      const shown = MEMES.filter((x) => !q || fold(x.ad).includes(q) || x.tags.some((t) => fold(t).includes(q)));
+      grid.replaceChildren(
+        ...shown.map((x) =>
+          h('button', { type: 'button', class: 'meme', title: x.ad, 'aria-label': `Kedi çıkartması: ${x.ad}`, onclick: () => react(x.id) },
+            h('img', { src: `memes/${x.f}-k.jpg`, alt: '', loading: 'lazy', draggable: 'false' }),
+            h('span', null, x.ad))
+        ),
+        ...(shown.length ? [] : [h('span', { class: 'memenone' }, 'Bulunamadı')])
+      );
+    };
+    search.addEventListener('input', fill);
+    memeStrips.push(fill);
+    fill();
+    return h('div', { class: 'memes', role: 'group', 'aria-label': 'Kedi çıkartmaları' }, search, grid);
   }
+
 
   // ---------------------------------------------------------------- durum
   const ui = {
@@ -245,6 +253,9 @@
   function react(emoji) {
     const meme = memeOf(emoji);
     if (meme) {
+      // Art arda basınca (spam) karşı tarafı boğmasın: 0,7 sn'de en fazla bir çıkartma
+      if (Date.now() - (ui.lastMeme || 0) < 700) return;
+      ui.lastMeme = Date.now();
       client.send({ t: 'react', emoji });
       if (ui.playerOpen) overlay({ type: 'meme', id: meme.f, img: !!meme.img, name: 'Sen' });
       else toast(`🐱 ${meme.ad} gönderildi`);
@@ -476,7 +487,7 @@
         if (meme) {
           if (ui.playerOpen && ENV === 'app') overlay({ type: 'meme', id: meme.f, img: !!meme.img, name: m.name });
           else toast([h('b', null, m.name), ` 🐱 ${meme.ad} gönderdi`]);
-        } else overlay({ type: 'react', emoji: m.emoji, name: m.name });
+        } else overlay({ type: 'react', emoji: /^kedi:/.test(m.emoji) ? '🐱' : m.emoji, name: m.name });
         break;
       }
       case 'error':

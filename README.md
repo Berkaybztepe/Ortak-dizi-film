@@ -84,7 +84,7 @@ Oda, uygulama arka plandayken de açık kalır. Kapatmak için karttaki ya da bi
    - **3-2-1 başlat:** ikiniz de durup aynı kareye gelirsiniz, geri sayım bitince aynı anda başlar.
    - **Buraya çağır:** açtığın bölümü diğerine gönderir.
    - Altta sohbet ve tepkiler.
-6. **Kedi tepkileri:** sohbetin altındaki 🐱 (ya da haptaki 🐱) kedi videolarını ve çıkartmalarını açar: Üzgün, Fiyonk, Gülen, Zıplayan, Sarılma, Muah, Dans, Selam, Şövalye, Samuray, Asker. Dokunduğun kedi ikinizin ekranında da sol üst köşeden kayarak girer, küçük bir kartta sesli oynar ve çıkar (ortayı ve altyazıyı kapatmaz). Karta dokununca ya da kaydırınca kapanır.
+6. **Çıkartmalar:** sohbetin altındaki 🐱 (ya da haptaki 🐱) 60'tan fazla hareketli çıkartmayı açar (gerçek kediler: mutlu, dans, şok, ağlayan, aşık, uykucu, Maxwell, Oiia, Pop… ve köpek, maymun, capsler). Üstteki kutuya "dans", "ağla", "aşk" gibi yazarak aranır. Dokunduğun kedi ikinizin ekranında da sol üst köşeden kayarak girer, küçük bir kartta sesli oynar ve çıkar (ortayı ve altyazıyı kapatmaz). Karta dokununca ya da kaydırınca kapanır.
 7. **Sohbet panelinin boyutu:** yanda panelin sol kenarındaki tutamağı sağa-sola, altta üst kenarındaki tutamağı yukarı-aşağı sürükle. Boyut hatırlanır.
 8. Yatay tutunca video solda, panel sağda olur; telefonda panelin üst kısmı küçülür, sohbete yer kalır. Klavye açılınca panelde yalnızca sohbet kalır, video yanda oynamaya devam eder. **Sadece video** ile video tam ekrana geçer; küçük bir sohbet düğmesi kalır (dikeyde sağ altta, yatayda oynatıcının düğmelerini kapatmasın diye sağ kenarın ortasında; sürüklenebilir), mesajlar videonun sol altından akar. Dikeyde video üstte, panel altta durur.
 

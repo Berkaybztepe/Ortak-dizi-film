@@ -101,6 +101,18 @@ try {
   (await waitFor(() => B.overlays('meme').some((r) => r.id === 'uzgun' && r.img === true), 4000)) ? pass('Üzgün kedi çıkartması karşıya gitti') : fail('Üzgün gitmedi');
   await A.ui.locator('.memes .meme[title="Muah"]').first().click();
   (await waitFor(() => B.overlays('meme').some((r) => r.id === 'muah' && r.img === true), 4000)) ? pass('MUAAH resmi karşıya gitti') : fail('Muah gitmedi');
+  // Arama: "ağla" yazınca yalnızca uygun kediler kalır
+  await A.ui.locator('.chat .memesearch').first().fill('ağla');
+  const found = await A.ui.evaluate(() => [...document.querySelectorAll('.chat .memegrid .meme')].map((b) => b.title));
+  found.includes('Üzgün') && !found.includes('Asker') ? pass('Kedi araması çalışıyor ("ağla" → ' + found.join(', ') + ')') : fail('Arama: ' + JSON.stringify(found));
+  await A.ui.locator('.chat .memesearch').first().fill('');
+  // Spam: art arda 6 kez basınca karşıya en fazla 1-2 tane gider, hata olmaz
+  await sleep(800);
+  const sp0 = B.overlays('meme').length;
+  for (let i = 0; i < 6; i++) await A.ui.evaluate(() => document.querySelector('.chat .memegrid .meme[title="Dans"]').click());
+  await sleep(1500);
+  const sp = B.overlays('meme').length - sp0;
+  sp >= 1 && sp <= 2 ? pass(`Art arda 6 basış → karşıya ${sp} çıkartma (spam koruması)`) : fail('Spam: ' + sp);
   const thumbs = await A.ui.evaluate(() => [...document.querySelectorAll('.chat .memes img')].map((i) => i.naturalWidth));
   thumbs.length >= 10 && thumbs.every((w) => w > 0) ? pass(thumbs.length + ' kedi küçük resmi yüklendi') : fail('Küçük resimler: ' + JSON.stringify(thumbs));
   await B.ui.locator('#collapseBtn').click(); // sadece video

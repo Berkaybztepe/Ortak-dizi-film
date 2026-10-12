@@ -1,7 +1,7 @@
 {
-  "versionCode": 10,
-  "versionName": "2.6.0",
+  "versionCode": 11,
+  "versionName": "2.7.0",
   "apk": "dist/OrtakIzle.apk",
-  "sha256": "9e524c40390934658cd4e086cd605fc13e5a9f0f3389fba826246a828f878c44",
-  "notes": "11 kedi tepkisi (Üzgün, Fiyonk, Gülen, Zıplayan, Sarılma, Muah, Dans, Selam, Şövalye, Samuray, Asker): ikinizde de sol üstten kayarak gelir. Sohbet paneli kenarından sürüklenip büyütülür/küçültülür. Video modundaki haptan oynat/durdur ve ±10. Tablet için düzenlendi, Disney+ dokunuş ve sarma düzeltmeleri."
+  "sha256": "4e527a5a5377493ba0b5960ed5a5eab5eb1bfadcc24e4c23c109515ebab9cc16",
+  "notes": "60'tan fazla gerçek kedi çıkartması (mutlu, dans, şok, ağlayan, aşık, Maxwell, Oiia, Pop…) + köpek, maymun; çıkartma araması; art arda basınca bozulmaz. Yüzen sohbet düğmesi klavye kapanırken zıplamaz."
 }

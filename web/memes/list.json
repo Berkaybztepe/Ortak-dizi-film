@@ -1,0 +1,778 @@
+[
+ {
+  "f": "uzgun",
+  "ad": "Üzgün",
+  "img": true,
+  "tags": [
+   "üzgün",
+   "ağla",
+   "telefon",
+   "hüzün",
+   "küs"
+  ]
+ },
+ {
+  "f": "fiyonk",
+  "ad": "Fiyonk",
+  "img": true,
+  "tags": [
+   "dil",
+   "fiyonk",
+   "tatlı",
+   "şirin",
+   "yavru"
+  ]
+ },
+ {
+  "f": "gulen",
+  "ad": "Gülen",
+  "tags": [
+   "gül",
+   "kahkaha",
+   "komik",
+   "haha",
+   "çığlık"
+  ]
+ },
+ {
+  "f": "zipla",
+  "ad": "Zıplayan",
+  "tags": [
+   "zıpla",
+   "mutlu",
+   "sevinç",
+   "dans",
+   "yaşasın"
+  ]
+ },
+ {
+  "f": "sarilma",
+  "ad": "Sarılma",
+  "tags": [
+   "sarıl",
+   "sevgi",
+   "aşk",
+   "kucak",
+   "yavru"
+  ]
+ },
+ {
+  "f": "muah",
+  "ad": "Muah",
+  "img": true,
+  "tags": [
+   "öpücük",
+   "muah",
+   "aşk",
+   "sevgi",
+   "öp"
+  ]
+ },
+ {
+  "f": "dans",
+  "ad": "Dans",
+  "tags": [
+   "dans",
+   "mutlu",
+   "eğlence",
+   "çak"
+  ]
+ },
+ {
+  "f": "selam",
+  "ad": "Selam",
+  "tags": [
+   "selam",
+   "merhaba",
+   "el sallama",
+   "hoş geldin",
+   "kara kedi"
+  ]
+ },
+ {
+  "f": "sovalye",
+  "ad": "Şövalye",
+  "tags": [
+   "kılıç",
+   "şövalye",
+   "savaş",
+   "cesur"
+  ]
+ },
+ {
+  "f": "samuray",
+  "ad": "Samuray",
+  "tags": [
+   "kılıç",
+   "samuray",
+   "savaş",
+   "sandalye"
+  ]
+ },
+ {
+  "f": "asker",
+  "ad": "Asker",
+  "tags": [
+   "silah",
+   "asker",
+   "savaş",
+   "nöbet"
+  ]
+ },
+ {
+  "f": "fuykucu",
+  "ad": "Uykucu",
+  "tags": [
+   "uyku",
+   "uykucu",
+   "uyu",
+   "yorgun",
+   "esne",
+   "yat",
+   "iyi geceler",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fsaskin",
+  "ad": "Şaşkın",
+  "tags": [
+   "şaşır",
+   "şaşkın",
+   "şok",
+   "ne",
+   "vay",
+   "bak",
+   "yavru",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fopucuk",
+  "ad": "Öpücük",
+  "tags": [
+   "öp",
+   "öpücük",
+   "aşk",
+   "sevgi",
+   "sev",
+   "tatlı",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fmama",
+  "ad": "Aç",
+  "tags": [
+   "aç",
+   "yemek",
+   "mama",
+   "acıktım",
+   "ye",
+   "kaşık",
+   "yavru",
+   "kedi"
+  ]
+ },
+ {
+  "f": "faglama",
+  "ad": "Ağlıyor",
+  "tags": [
+   "ağla",
+   "ağlama",
+   "hüngür",
+   "üzgün",
+   "dram",
+   "yavru",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fsaril",
+  "ad": "Sarıl",
+  "tags": [
+   "sarıl",
+   "sarılma",
+   "kucak",
+   "sevgi",
+   "aşk",
+   "tatlı",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fuzgun",
+  "ad": "Üzgün",
+  "tags": [
+   "üzgün",
+   "ağla",
+   "gözyaşı",
+   "hüzün",
+   "kırgın",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fkizgin",
+  "ad": "Kızgın",
+  "tags": [
+   "kızgın",
+   "sinir",
+   "saldır",
+   "öfke",
+   "kavga",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fyalvar",
+  "ad": "Lütfen",
+  "tags": [
+   "lütfen",
+   "yalvar",
+   "masum",
+   "sevimli",
+   "göz",
+   "tatlı",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fdans",
+  "ad": "Dans",
+  "tags": [
+   "dans",
+   "oyna",
+   "eğlence",
+   "mutlu",
+   "parti",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fbagir",
+  "ad": "Bağır",
+  "tags": [
+   "bağır",
+   "çığlık",
+   "gül",
+   "ne",
+   "şok",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fkavga",
+  "ad": "Kavga",
+  "tags": [
+   "kavga",
+   "oyun",
+   "boğuş",
+   "şaka",
+   "yavru",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fkos",
+  "ad": "Koş",
+  "tags": [
+   "koş",
+   "zıpla",
+   "geliyorum",
+   "mutlu",
+   "hızlı",
+   "yavru",
+   "kedi"
+  ]
+ },
+ {
+  "f": "fmutlu",
+  "ad": "Mutlu",
+  "tags": [
+   "mutlu",
+   "sevinç",
+   "oyun",
+   "neşe",
+   "tatlı",
+   "yavru",
+   "kedi"
+  ]
+ },
+ {
+  "f": "hoiia",
+  "ad": "Oiia",
+  "tags": [
+   "oiia",
+   "dön",
+   "dönen",
+   "mutlu",
+   "eğlence",
+   "komik"
+  ]
+ },
+ {
+  "f": "hvibe",
+  "ad": "Vibe",
+  "tags": [
+   "vibe",
+   "kafa",
+   "sallan",
+   "müzik",
+   "keyif",
+   "dans"
+  ]
+ },
+ {
+  "f": "hjam",
+  "ad": "Ritim",
+  "tags": [
+   "ritim",
+   "müzik",
+   "keyif",
+   "vibe",
+   "kafa",
+   "sallan"
+  ]
+ },
+ {
+  "f": "hyay",
+  "ad": "Yaşasın",
+  "tags": [
+   "yaşasın",
+   "yey",
+   "sevinç",
+   "mutlu",
+   "kutlama",
+   "dans"
+  ]
+ },
+ {
+  "f": "hzipla",
+  "ad": "Zıpzıp",
+  "tags": [
+   "zıpla",
+   "zıplama",
+   "mutlu",
+   "sevinç",
+   "heyecan",
+   "coşku"
+  ]
+ },
+ {
+  "f": "hdans",
+  "ad": "Dansçı",
+  "tags": [
+   "dans",
+   "yavru",
+   "mutlu",
+   "eğlence",
+   "oyna",
+   "sevinç"
+  ]
+ },
+ {
+  "f": "hluna",
+  "ad": "Keyifli",
+  "tags": [
+   "keyif",
+   "mutlu",
+   "kafa",
+   "sallan",
+   "vibe",
+   "huzur"
+  ]
+ },
+ {
+  "f": "hkipir",
+  "ad": "Heyecanlı",
+  "tags": [
+   "heyecan",
+   "kıpır",
+   "popo",
+   "hazır",
+   "oyun",
+   "coşku"
+  ]
+ },
+ {
+  "f": "hspin",
+  "ad": "Fırıldak",
+  "tags": [
+   "dön",
+   "dönen",
+   "fırıldak",
+   "yavru",
+   "dans",
+   "eğlence"
+  ]
+ },
+ {
+  "f": "hpofuk",
+  "ad": "Pofuduk",
+  "tags": [
+   "zıpla",
+   "oyun",
+   "çılgın",
+   "yavru",
+   "heyecan",
+   "eğlence"
+  ]
+ },
+ {
+  "f": "hgeleng",
+  "ad": "Havalı",
+  "tags": [
+   "havalı",
+   "vibe",
+   "kafa",
+   "sallan",
+   "keyif",
+   "müzik"
+  ]
+ },
+ {
+  "f": "rsok",
+  "ad": "Şok",
+  "tags": [
+   "şok",
+   "şaşkın",
+   "şaşırmış",
+   "vay",
+   "ne",
+   "kedi"
+  ]
+ },
+ {
+  "f": "ragla",
+  "ad": "Ağlayan",
+  "tags": [
+   "ağlayan",
+   "ağlama",
+   "üzgün",
+   "hüzün",
+   "gözyaşı",
+   "kedi"
+  ]
+ },
+ {
+  "f": "rkizgin",
+  "ad": "Kızgın",
+  "tags": [
+   "kızgın",
+   "sinirli",
+   "öfkeli",
+   "tıslama",
+   "hırr",
+   "kedi"
+  ]
+ },
+ {
+  "f": "rkorku",
+  "ad": "Korkmuş",
+  "tags": [
+   "korkmuş",
+   "korku",
+   "ürkmüş",
+   "tedirgin",
+   "gergin",
+   "kedi"
+  ]
+ },
+ {
+  "f": "rasik",
+  "ad": "Aşık",
+  "tags": [
+   "aşık",
+   "aşk",
+   "kalp",
+   "sevgi",
+   "seviyorum",
+   "kedi"
+  ]
+ },
+ {
+  "f": "ropucuk",
+  "ad": "Öpücük",
+  "tags": [
+   "öpücük",
+   "öpmek",
+   "aşk",
+   "sevgi",
+   "tatlı",
+   "kedi"
+  ]
+ },
+ {
+  "f": "ruyku",
+  "ad": "Uykucu",
+  "tags": [
+   "uykucu",
+   "uyku",
+   "uyumak",
+   "sıkıldım",
+   "yorgun",
+   "kedi"
+  ]
+ },
+ {
+  "f": "rsupheli",
+  "ad": "Şüpheli",
+  "tags": [
+   "şüpheli",
+   "yan bakış",
+   "emin değilim",
+   "sırıtma",
+   "hmm",
+   "kedi"
+  ]
+ },
+ {
+  "f": "rmisir",
+  "ad": "Mısır",
+  "tags": [
+   "patlamış mısır",
+   "mısır",
+   "izliyorum",
+   "dizi",
+   "film",
+   "aç",
+   "kedi"
+  ]
+ },
+ {
+  "f": "rhayir",
+  "ad": "Hayır",
+  "tags": [
+   "hayır",
+   "yok",
+   "istemem",
+   "beğenmedim",
+   "surat",
+   "kedi"
+  ]
+ },
+ {
+  "f": "rcak",
+  "ad": "Çak!",
+  "tags": [
+   "çak",
+   "beşlik",
+   "alkış",
+   "bravo",
+   "tebrikler",
+   "süper",
+   "kedi"
+  ]
+ },
+ {
+  "f": "rdusun",
+  "ad": "Düşünceli",
+  "tags": [
+   "düşünceli",
+   "düşünmek",
+   "hmm",
+   "yükleniyor",
+   "anlamadım",
+   "kedi"
+  ]
+ },
+ {
+  "f": "pmaxwell",
+  "ad": "Maxwell",
+  "tags": [
+   "maxwell",
+   "kedi",
+   "doner",
+   "siyah beyaz",
+   "komik",
+   "dönen"
+  ]
+ },
+ {
+  "f": "puni",
+  "ad": "Uni",
+  "tags": [
+   "uni",
+   "kedi",
+   "bakis",
+   "sevimli",
+   "siyah beyaz",
+   "bakış"
+  ]
+ },
+ {
+  "f": "ppolite",
+  "ad": "Kibar",
+  "tags": [
+   "kibar",
+   "nazik",
+   "gulumseme",
+   "kedi",
+   "tatli",
+   "gülümseme"
+  ]
+ },
+ {
+  "f": "psmile",
+  "ad": "Sırıt",
+  "tags": [
+   "sirit",
+   "gulumse",
+   "gulme",
+   "kedi",
+   "mutlu",
+   "sırıt",
+   "gülümse",
+   "gülme"
+  ]
+ },
+ {
+  "f": "phuh",
+  "ad": "Ha?",
+  "tags": [
+   "ha",
+   "huh",
+   "ne",
+   "anlamadim",
+   "saskin",
+   "kedi",
+   "anlamadım",
+   "şaşkın"
+  ]
+ },
+ {
+  "f": "ptyping",
+  "ad": "Yazıyor",
+  "tags": [
+   "yaziyor",
+   "klavye",
+   "bilgisayar",
+   "calisma",
+   "kedi",
+   "yazıyor",
+   "çalışma"
+  ]
+ },
+ {
+  "f": "pblink",
+  "ad": "Göz kırp",
+  "tags": [
+   "kirpma",
+   "goz",
+   "bakis",
+   "plink",
+   "kedi",
+   "kırpma",
+   "göz kırp",
+   "bakış"
+  ]
+ },
+ {
+  "f": "pstare",
+  "ad": "Bakış",
+  "tags": [
+   "bakis",
+   "dik dik",
+   "suzme",
+   "ciddi",
+   "kedi",
+   "bakış",
+   "süzme"
+  ]
+ },
+ {
+  "f": "ppop",
+  "ad": "Pop",
+  "tags": [
+   "pop",
+   "agiz",
+   "hap",
+   "acik agiz",
+   "kedi",
+   "ağız",
+   "açık ağız"
+  ]
+ },
+ {
+  "f": "pthumbs",
+  "ad": "Süper",
+  "tags": [
+   "super",
+   "onay",
+   "tamam",
+   "bas parmak",
+   "begen",
+   "kedi",
+   "süper",
+   "baş parmak",
+   "beğen"
+  ]
+ },
+ {
+  "f": "pwow",
+  "ad": "Vay be",
+  "tags": [
+   "vay",
+   "vay be",
+   "sok",
+   "saskin",
+   "sasirma",
+   "kedi",
+   "şok",
+   "şaşkın",
+   "şaşırma"
+  ]
+ },
+ {
+  "f": "psneak",
+  "ad": "Gizlice",
+  "tags": [
+   "gizli",
+   "sinsi",
+   "bakiyor",
+   "kapi",
+   "saklanma",
+   "kedi",
+   "bakıyor",
+   "kapı"
+  ]
+ },
+ {
+  "f": "achihua",
+  "ad": "Pembe Köpek",
+  "tags": [
+   "köpek",
+   "pembe",
+   "dans",
+   "komik",
+   "elbise",
+   "çivava"
+  ],
+  "img": true
+ },
+ {
+  "f": "amaymun",
+  "ad": "Maymun",
+  "tags": [
+   "maymun",
+   "pembe",
+   "elbise",
+   "komik",
+   "sevimli"
+  ],
+  "img": true
+ },
+ {
+  "f": "akopek",
+  "ad": "Köpek",
+  "tags": [
+   "köpek",
+   "kanepe",
+   "komik",
+   "bakış",
+   "oturan"
+  ],
+  "img": true
+ }
+]

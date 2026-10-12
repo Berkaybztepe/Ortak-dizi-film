@@ -390,7 +390,7 @@ class PlayerOverlay(context: Context, private val onBack: () -> Unit, private va
     private var memeEnd: Runnable? = null
 
     fun meme(id: String, img: Boolean, name: String) {
-        if (!Regex("[a-z]{2,20}").matches(id)) return
+        if (!Regex("[a-z]{2,24}").matches(id)) return
         stopMeme()
         val maxW = (width * 0.26f).roundToInt().coerceIn(dp(130f), dp(220f))
         val maxH = (height * 0.34f).roundToInt().coerceIn(dp(110f), dp(250f))

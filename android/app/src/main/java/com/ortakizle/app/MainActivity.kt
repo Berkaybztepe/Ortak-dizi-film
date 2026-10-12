@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
     private var desktopMode = true
     private var bootstrap: String? = null
     private var insets = intArrayOf(0, 0, 0, 0) // sol, üst, sağ, alt (sistem çubukları + klavye)
+    private var barsBottom = 0 // alt sistem çubuğu (klavye hariç)
     private var lastLayoutMode = ""
     private var discovery: Discovery? = null
     private var uiDead = false
@@ -122,6 +123,7 @@ class MainActivity : ComponentActivity() {
             val bars = wi.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val ime = wi.getInsets(WindowInsetsCompat.Type.ime())
             insets = intArrayOf(bars.left, bars.top, bars.right, max(bars.bottom, ime.bottom))
+            barsBottom = bars.bottom
             relayout()
             WindowInsetsCompat.CONSUMED
         }
@@ -953,7 +955,8 @@ class MainActivity : ComponentActivity() {
             val fw = dp(if (floatW > 0) floatW else 120)
             val fh = dp(if (floatH > 0) floatH else 72)
             if (!floatDragging) {
-                val (x, y) = floatSpot(landscape, left, top, right, bottom, fw, fh)
+                // Klavye hesaba katılmaz (yazma çubuğu kapanırken klavye bir an açık kalıyor)
+                val (x, y) = floatSpot(landscape, left, top, right, h - barsBottom, fw, fh)
                 place(ui, x, y, fw, fh)
             }
         } else if (landscape) {
@@ -1125,11 +1128,11 @@ class MainActivity : ComponentActivity() {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (!floatDragging) return false
                 floatDragging = false
-                val (il, itop, ir, ib) = insets.toList()
+                val (il, itop, ir, _) = insets.toList()
                 val w = root.width
                 val h = root.height
                 val aw = (w - ir - il).coerceAtLeast(1)
-                val ah = (h - ib - itop).coerceAtLeast(1)
+                val ah = (h - barsBottom - itop).coerceAtLeast(1)
                 val now = ui.layoutParams as FrameLayout.LayoutParams
                 val fx = ((now.leftMargin + now.width - il).toFloat() / aw).coerceIn(0f, 1f)
                 val cy = if (floatUp) now.topMargin + now.height - floatHalf() else now.topMargin + floatHalf()

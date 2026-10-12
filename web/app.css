@@ -615,3 +615,18 @@ body.bottom .grab::after { width: 52px; height: 5px; margin-top: 7px; background
 .fmemes[hidden] { display: none; }
 .fmemes .memes { padding: 10px; flex-wrap: wrap; justify-content: center; overflow: visible; }
 .pill #fCats { width: 34px; min-height: 34px; background: transparent; font-size: 18px; }
+/* Kedi çıkartmaları: arama + kaydırılabilir ızgara (çok sayıda çıkartma için) */
+.memes { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px 2px; overflow: visible; touch-action: auto; }
+.memesearch { min-height: 36px; padding: 0 14px; font-size: 13px; border-radius: 999px; }
+.memegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 8px 6px; max-height: 214px; overflow-y: auto;
+  overscroll-behavior: contain; padding: 2px 0 4px; touch-action: pan-y; }
+.memegrid .meme { width: 100%; }
+.memegrid .meme span { max-width: 62px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memenone { grid-column: 1 / -1; text-align: center; color: var(--text-mute); font-size: 12px; padding: 10px 0; }
+@media (max-height: 560px) {
+  body.side .memegrid, body.bottom .memegrid { max-height: 118px; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); }
+  body.side .memesearch, body.bottom .memesearch { min-height: 30px; }
+}
+.fmemes { width: 340px; }
+.fmemes .memes { padding: 10px; }
+.fmemes .memegrid { max-height: 250px; }
