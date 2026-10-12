@@ -288,6 +288,79 @@
     return !window.matchMedia('(max-width: 820px)').matches || ui.tab === 'chat';
   }
 
+  // ---------------------------------------------------------------- kaydırarak kapatma
+  // Parmakla sürüklenen öğe yeterince kaydırılınca done() çağrılır, yoksa yerine döner.
+  //   axis 'x': iki yana (bildirim), '+x': yalnızca sağa (yan panel), '+y': yalnızca aşağı (alt panel)
+  //   skip(target): bu öğede başlayan dokunuş kaydırma sayılmaz (yazı alanı, emoji sırası…)
+  function swipe(el, { axis, done, skip, enabled }) {
+    let s = null;
+    const off = (ev) => {
+      if (!s || ev.pointerId !== s.id) return;
+      if (!s.moving) {
+        s = null; // dokunup bırakma: normal tıklama
+        return;
+      }
+      const d = s.d;
+      const far = s.moving && Math.abs(d) > Math.max(70, s.size * 0.25);
+      el.classList.remove('dragging');
+      el.classList.add('settle');
+      if (far && ev.type === 'pointerup') {
+        el.style.transform = axis.endsWith('y') ? `translateY(${s.size}px)` : `translateX(${Math.sign(d) * s.size}px)`;
+        el.style.opacity = '0';
+        setTimeout(() => {
+          el.classList.remove('settle');
+          el.style.transform = el.style.opacity = '';
+          done();
+        }, 200);
+      } else {
+        el.style.transform = el.style.opacity = '';
+        setTimeout(() => el.classList.remove('settle'), 220);
+      }
+      s = null;
+    };
+    el.addEventListener('pointerdown', (ev) => {
+      if (s || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+      if (enabled && !enabled()) return;
+      if (skip && skip(ev.target)) return;
+      const r = el.getBoundingClientRect();
+      s = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, d: 0, moving: false, size: axis.endsWith('y') ? r.height : r.width };
+    });
+    el.addEventListener('pointermove', (ev) => {
+      if (!s || ev.pointerId !== s.id) return;
+      const dx = ev.clientX - s.x;
+      const dy = ev.clientY - s.y;
+      if (!s.moving) {
+        if (Math.hypot(dx, dy) < 10) return;
+        const along = axis.endsWith('y') ? dy : dx;
+        const across = axis.endsWith('y') ? dx : dy;
+        // Başka yöne giden hareket (ör. mesajları kaydırmak) bizim değil
+        if (Math.abs(along) < Math.abs(across) * 1.3 || (axis[0] === '+' && along < 0)) {
+          s = null;
+          return;
+        }
+        s.moving = true;
+        el.classList.add('dragging');
+        try {
+          el.setPointerCapture(ev.pointerId);
+        } catch {}
+      }
+      let d = axis.endsWith('y') ? dy : dx;
+      if (axis[0] === '+') d = Math.max(0, d);
+      s.d = d;
+      el.style.transform = axis.endsWith('y') ? `translateY(${d}px)` : `translateX(${d}px)`;
+      el.style.opacity = String(Math.max(0.3, 1 - Math.abs(d) / s.size));
+    });
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointercancel', off);
+    // Kaydırma bitince altta kalan düğmeye "tıklandı" sayılmasın
+    el.addEventListener('click', (ev) => {
+      if (el.classList.contains('settle')) {
+        ev.stopPropagation();
+        ev.preventDefault();
+      }
+    }, true);
+  }
+
   // ---------------------------------------------------------------- bildirimler
   function toast(content, opts = {}) {
     const box = ui.layout === 'float' ? $('fToasts') : $('toasts');
@@ -307,6 +380,7 @@
         h('button', { class: 'btn quiet icon sm', 'aria-label': 'Kapat', onclick: close }, icon('close'))
       );
     }
+    swipe(t, { axis: 'x', done: close });
     while (box.children.length >= 3) box.firstElementChild.remove();
     box.append(t);
     setTimeout(close, opts.ms || (opts.action ? 20000 : 3500));
@@ -1168,6 +1242,20 @@
   }
   $('collapseBtn').addEventListener('click', () => native.call('setPanel', 'closed'));
   $('fOpen').addEventListener('click', () => native.call('setPanel', 'open'));
+  // Panel kaydırılarak kapanır (yanda sağa, altta aşağı): "Sadece video" ile aynı
+  swipe($('vWatch'), {
+    axis: '+x',
+    enabled: () => ENV === 'app' && ui.layout === 'side',
+    skip: (t) => !!t.closest('input, textarea, .reacts'),
+    done: () => native.call('setPanel', 'closed'),
+  });
+  swipe($('vWatch'), {
+    axis: '+y',
+    enabled: () => ENV === 'app' && ui.layout === 'bottom',
+    // Altta yalnızca üst kısımdan (tutamak, başlık, saat, düğmeler) tutulur; mesaj listesi kendi kayar
+    skip: (t) => !!t.closest('#watchChatSlot'),
+    done: () => native.call('setPanel', 'closed'),
+  });
   $('tResync').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'resync' }));
   $('tPlay').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'toggle' }));
   $('tBack').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'seekBy', delta: -10 }));
@@ -1184,6 +1272,12 @@
   window.OI = {
     fromPlayer(m) {
       fromPlayer(typeof m === 'string' ? JSON.parse(m) : m);
+    },
+    // Sohbet düğmesi ekranın alt yarısındaysa bildirimler onun üstünde açılır
+    setFloatUp(up) {
+      $('vFloat').classList.toggle('up', !!up);
+      lastFloat = '';
+      reportFloatSize();
     },
     setLayout(l) {
       const o = typeof l === 'string' ? JSON.parse(l) : l;

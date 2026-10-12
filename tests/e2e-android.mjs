@@ -115,7 +115,7 @@ step('WebView hata ayıklama soketi aranıyor');
 const sock = await waitFor(() => {
   const s = adb('shell cat /proc/net/unix').split('\n').map((l) => l.trim().split(/\s+/).pop()).find((x) => /webview_devtools_remote/.test(x || ''));
   return s ? s.replace(/^@/, '') : null;
-}, 300000, 3000);
+}, 600000, 3000);
 if (!sock) {
   console.log('Soket bulunamadı');
   process.exit(1);
@@ -257,6 +257,69 @@ ticker ? pass('Sohbet kapalıyken mesaj katmana gitti (videonun altından akar)'
 SHOT('8-akan-mesaj');
 const backBtn = await waitFor(() => backButtonAt(), 10000, 700);
 backBtn && backBtn.x < 400 && backBtn.y < 400 ? pass(`Sol üstte ayrı geri düğmesi var (${backBtn.x},${backBtn.y})`) : fail('Geri düğmesi bulunamadı: ' + JSON.stringify(backBtn));
+
+step('Sohbet düğmesi sürüklenir, akan mesaj kaydırılınca kapanır');
+const floatLog = () => logLines().filter((x) => /Sohbet düğmesi: -?\d+ -?\d+/.test(x));
+const floatAt = () => {
+  const all = floatLog();
+  const m = all.length && all[all.length - 1].match(/Sohbet düğmesi: (-?\d+) (-?\d+)/);
+  return m ? { x: +m[1], y: +m[2], n: all.length } : null;
+};
+const disp = (() => {
+  const m = adb('shell dumpsys window displays').match(/cur=(\d+)x(\d+)/);
+  return m ? { w: +m[1], h: +m[2] } : { w: 0, h: 0 };
+})();
+const f0 = await waitFor(() => floatAt(), 10000, 700);
+const land = disp.w > disp.h;
+f0 && f0.x > disp.w * 0.8 && (land ? f0.y > disp.h * 0.3 && f0.y < disp.h * 0.7 : f0.y > disp.h * 0.75)
+  ? pass(`Sohbet düğmesi ${land ? 'sağ kenarın ortasında' : 'sağ altta'} (${f0.x},${f0.y} / ${disp.w}x${disp.h})`)
+  : fail('Sohbet düğmesinin yeri: ' + JSON.stringify({ f0, disp }));
+if (f0) {
+  await clearDialogs();
+  adb(`shell input swipe ${f0.x} ${f0.y} ${f0.x - 300} ${f0.y + 150} 900`);
+  const f1 = await waitFor(() => {
+    const f = floatAt();
+    return f && f.n > f0.n && Math.abs(f.x - f0.x) > 150 ? f : null;
+  }, 15000, 700);
+  f1 ? pass(`Sürükleyince yer değiştirdi (${f0.x},${f0.y} → ${f1.x},${f1.y})`) : fail('Düğme sürüklenmedi: ' + JSON.stringify(floatAt()));
+  (await ui.visible('#vFloat')) && !(await ui.visible('#vWatch')) ? pass('Sürüklemek sohbeti açmadı') : fail('Sürükleyince sohbet açıldı');
+  if (f1) {
+    adb(`shell input tap ${f1.x} ${f1.y}`);
+    (await waitFor(() => ui.visible('#vWatch'), 10000, 500)) ? pass('Yeni yerinde dokununca sohbet açıldı') : fail('Dokununca sohbet açılmadı');
+    await ui.click('#collapseBtn');
+    const f2 = await waitFor(() => {
+      const f = floatAt();
+      return f && f.n > f1.n ? f : null;
+    }, 10000, 700);
+    f2 && Math.abs(f2.x - f1.x) < 40 && Math.abs(f2.y - f1.y) < 40 ? pass('Düğme yeni yerini hatırladı') : fail('Yer hatırlanmadı: ' + JSON.stringify({ f1, f2 }));
+  }
+}
+const msgLog = () => logLines().filter((x) => /Mesaj yeri: \d+ \d+/.test(x));
+const seenMsgs = msgLog().length;
+kardes.send({ t: 'chat', text: 'kaydır beni' });
+const mAt = await waitFor(() => {
+  const all = msgLog();
+  const m = all.length > seenMsgs && all[all.length - 1].match(/Mesaj yeri: (\d+) (\d+)/);
+  return m ? { x: +m[1], y: +m[2] } : null;
+}, 20000, 700);
+if (mAt) {
+  const gone0 = logLines().filter((x) => /Mesaj kaydırılıp kapatıldı/.test(x)).length;
+  adb(`shell input swipe ${mAt.x} ${mAt.y} ${Math.max(5, mAt.x - 450)} ${mAt.y} 350`);
+  (await waitFor(() => logLines().filter((x) => /Mesaj kaydırılıp kapatıldı/.test(x)).length > gone0, 8000, 500))
+    ? pass('Akan mesaj yana kaydırınca kapandı')
+    : fail('Mesaj kaydırılınca kapanmadı');
+} else fail('Akan mesajın yeri bulunamadı');
+const seenMsgs2 = msgLog().length;
+kardes.send({ t: 'chat', text: 'dokun bana' });
+const mAt2 = await waitFor(() => {
+  const all = msgLog();
+  const m = all.length > seenMsgs2 && all[all.length - 1].match(/Mesaj yeri: (\d+) (\d+)/);
+  return m ? { x: +m[1], y: +m[2] } : null;
+}, 20000, 700);
+if (mAt2) {
+  adb(`shell input tap ${mAt2.x} ${mAt2.y}`);
+  (await waitFor(() => ui.visible('#vWatch'), 10000, 500)) ? pass('Akan mesaja dokununca sohbet açıldı') : fail('Mesaja dokununca sohbet açılmadı');
+} else fail('İkinci akan mesajın yeri bulunamadı');
 
 step('Geri sayım (aynı kareden, aynı anda)');
 await ui.click('#fOpen');

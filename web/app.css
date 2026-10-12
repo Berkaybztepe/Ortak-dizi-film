@@ -349,8 +349,61 @@ body.bottom .tools { padding: 4px 10px 8px; }
 body.bottom .tools .btn { min-height: 46px; flex-direction: row; gap: 6px; border-radius: 999px; }
 body.bottom .wbar { padding-top: 6px; }
 
+/* Panel kaydırılarak kapanır: yanda sağa, altta aşağı. Tutamak bunu belli eder. */
+.watch { position: relative; touch-action: pan-y; }
+.watch .wbar, .watch .sync, .watch .transport, .watch .tools, .watch .grab { touch-action: none; -webkit-user-select: none; user-select: none; }
+.watch .reacts { touch-action: pan-x; }
+.watch.dragging { transition: none; }
+.watch.settle { transition: transform .2s ease-out, opacity .2s ease-out; }
+.grab { display: none; }
+body.bottom .grab { display: block; height: 14px; flex: none; }
+body.bottom .grab::after { content: ""; display: block; width: 38px; height: 4px; margin: 6px auto 0; border-radius: 2px; background: var(--surface-3); }
+body.side .wbar { padding-left: 14px; }
+body.side .grab { display: block; position: absolute; left: 0; top: 0; bottom: 0; width: 14px; z-index: 1; }
+body.side .grab::after { content: ""; position: absolute; left: 4px; top: 50%; width: 4px; height: 38px; margin-top: -19px; border-radius: 2px; background: var(--surface-3); }
+
+/* Kısa ekranda (telefon yatay) üst kısım küçülür, sohbete yer kalır */
+@media (max-height: 560px) {
+  body.side .watch, body.bottom .watch { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto minmax(0, 1fr); }
+  body.side .grab { grid-row: 1 / -1; }
+  body.bottom .watch { grid-template-rows: auto auto auto auto minmax(0, 1fr); }
+  body.bottom .grab { grid-column: 1 / -1; }
+  body.side .wbar, body.bottom .wbar { grid-column: 1 / -1; padding: calc(4px + var(--safe-t)) 8px 0 14px; }
+  body.side .wbar .title b, body.bottom .wbar .title b { font-size: 15px; }
+  body.side .wbar .btn, body.bottom .wbar .btn { min-height: 34px; padding: 0 12px; font-size: var(--t-xs); }
+  body.side .sync, body.bottom .sync { grid-column: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+    margin: 4px 0 4px 12px; padding: 6px 10px; min-width: 0; }
+  body.side .tc-big, body.bottom .tc-big { font-size: 20px; white-space: nowrap; }
+  body.side .tc-big .of, body.bottom .tc-big .of { font-size: 11px; margin-left: 4px; }
+  body.side .chip, body.bottom .chip { height: 22px; padding: 0 8px; font-size: 11px; max-width: 100%; }
+  body.side .chip span:last-child, body.bottom .chip span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.side .sync .who, body.bottom .sync .who { display: none; }
+  body.side .transport, body.bottom .transport { grid-column: 2; gap: 8px; padding: 4px 10px 4px 8px; }
+  body.side .tplay, body.bottom .tplay { width: 46px; min-height: 46px; height: 46px; }
+  body.side .tplay svg, body.bottom .tplay svg { width: 22px; height: 22px; }
+  body.side .tskip, body.bottom .tskip { width: 38px; min-height: 38px; height: 38px; }
+  body.side .tskip svg, body.bottom .tskip svg { width: 24px; height: 24px; }
+  body.side .tskip b, body.bottom .tskip b { font-size: 8px; }
+  body.side .tools, body.bottom .tools { grid-column: 1 / -1; gap: 6px; padding: 2px 10px 6px 14px; }
+  body.side .tools .btn, body.bottom .tools .btn { min-height: 34px; flex-direction: row; gap: 5px; border-radius: 999px; padding: 0 6px; white-space: nowrap; overflow: hidden; }
+  body.side .tools .btn svg, body.bottom .tools .btn svg { width: 16px; height: 16px; flex: none; }
+  body.side #watchChatSlot, body.bottom #watchChatSlot { grid-column: 1 / -1; min-height: 0; }
+  body.side .reacts, body.bottom .reacts { padding: 2px 8px; }
+  body.side .reacts button, body.bottom .reacts button { height: 36px; font-size: 19px; }
+  body.side .composer, body.bottom .composer { padding: 4px 10px calc(8px + var(--safe-b)); }
+  body.side .composer .input, body.bottom .composer .input { min-height: 40px; }
+  body.side .composer .btn.primary, body.bottom .composer .btn.primary { width: 40px; min-height: 40px; }
+  body.side .msgs, body.bottom .msgs { padding: 6px 12px 8px 16px; }
+}
+/* Klavye açıkken (çok kısa panel) yalnızca sohbet: video yanda/üstte oynamaya devam eder */
+@media (max-height: 300px) {
+  body.side .sync, body.side .transport, body.side .tools, body.side .reacts,
+  body.bottom .sync, body.bottom .transport, body.bottom .tools, body.bottom .reacts, body.bottom .grab { display: none; }
+}
+
 /* ---------------------------------------------------------------- yüzen hap (tam ekran) */
 .float { position: fixed; right: 12px; top: 12px; width: max-content; max-width: 340px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.float.up { top: auto; bottom: 12px; flex-direction: column-reverse; }
 .pill { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 999px;
   background: rgba(11, 11, 12, .9); box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
 .pill .people .avatar { box-shadow: 0 0 0 3px #0b0b0c; }
@@ -364,7 +417,7 @@ body.bottom .wbar { padding-top: 6px; }
   flex-direction: column; align-items: center; gap: 8px; width: min(440px, calc(100% - 32px)); pointer-events: none; z-index: 10; }
 body.float .toasts, body.side .toasts, body.bottom .toasts { position: static; transform: none; width: auto; align-items: flex-end; }
 body.side .toasts, body.bottom .toasts { position: fixed; left: 12px; right: 12px; bottom: 132px; align-items: stretch; }
-.toast { pointer-events: auto; display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 16px; border-radius: var(--r-lg);
+.toast { touch-action: pan-y; pointer-events: auto; display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 16px; border-radius: var(--r-lg);
   background: var(--surface-3); box-shadow: 0 12px 32px rgba(0, 0, 0, .55); animation: toastIn .22s ease-out; max-width: 100%; }
 .toast .t { flex: 1; min-width: 0; font-size: var(--t-sm); font-weight: 500; }
 .toast .t b { font-weight: 800; }

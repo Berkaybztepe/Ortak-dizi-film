@@ -1,7 +1,7 @@
 {
-  "versionCode": 7,
-  "versionName": "2.4.1",
+  "versionCode": 8,
+  "versionName": "2.4.2",
   "apk": "dist/OrtakIzle.apk",
-  "sha256": "f67493fc08f91916f416e1c150a6700bf956a6fdf37f5f6b6efd6df9987e261e",
-  "notes": "Bağımsız incelemede bulunan hatalar düzeltildi: aynı anda basınca kumanda karışması, sonradan açılan sayfanın herkesi geri çekmesi, yeniden bağlanınca videonun durması, yönetici devri, giriş sayfası döngüsü, mobil adresler, güncelleme denetimi."
+  "sha256": "b462e6e8fb4f59caaacb2c88f66fc0af7719a1fc868ae388c8a6f997b339279b",
+  "notes": "Telefonda izleme paneli küçüldü, sohbete yer açıldı; klavye açıkken yalnızca sohbet kalır, video oynamaya devam eder. Sohbet düğmesi dikeyde sağ altta ve sürüklenebilir. Panel, akan mesajlar ve bildirimler kaydırılarak kapatılır."
 }

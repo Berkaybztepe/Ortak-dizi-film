@@ -16,6 +16,7 @@ import android.os.Message
 import android.util.Base64
 import android.util.Log
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -46,6 +47,7 @@ import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -102,7 +104,11 @@ class MainActivity : ComponentActivity() {
         }
         ui = WebView(this)
         // Oynatıcının üstündeki yerel katman (geri düğmesi, tepkiler, mesajlar, uyarılar)
-        overlay = PlayerOverlay(this) { js("window.OI && OI.onBack('button')") }
+        overlay = PlayerOverlay(this, onBack = { js("window.OI && OI.onBack('button')") }, onChat = {
+            // Akan mesaja dokununca sohbet açılır
+            panelOpen = true
+            relayout()
+        })
         playerBox.addView(overlay, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         root.addView(playerBox, FrameLayout.LayoutParams(0, 0))
         root.addView(ui, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -121,6 +127,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setupUi()
+        ui.setOnTouchListener { _, e -> floatDrag(e) }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = onBack()
         })
@@ -870,8 +877,10 @@ class MainActivity : ComponentActivity() {
             place(playerBox, 0, 0, w, h)
             val fw = dp(if (floatW > 0) floatW else 120)
             val fh = dp(if (floatH > 0) floatH else 72)
-            // Sağ kenarın ortası: oynatıcının üst ve alt düğmeleri (ses, altyazı, tam ekran) açık kalsın
-            place(ui, right - fw, top + max(0, (ah - fh) / 2), fw, fh)
+            if (!floatDragging) {
+                val (x, y) = floatSpot(landscape, left, top, right, bottom, fw, fh)
+                place(ui, x, y, fw, fh)
+            }
         } else if (landscape) {
             mode = "side"
             val panel = min(dp(380), (aw * 0.42f).roundToInt())
@@ -891,11 +900,110 @@ class MainActivity : ComponentActivity() {
         popup?.bringToFront()
         if (BuildConfig.DEBUG && watching) overlay.postDelayed({
             overlay.backCenter()?.let { Log.i(TAG, "Geri düğmesi: ${it[0]} ${it[1]}") }
+            if (lastLayoutMode == "float") logFloat()
         }, 400)
         if (mode != lastLayoutMode) {
             lastLayoutMode = mode
             js("window.OI && OI.setLayout(${JSONObject().put("mode", mode).put("fullscreen", fullscreen)})")
         }
+    }
+
+    // ------------------------------------------------------------------ sohbet düğmesi (yüzen hap)
+    // Varsayılan yer: dikeyde sağ alt (videonun altındaki boşluk), yatayda sağ kenarın ortası
+    // (yatayda sağ altta oynatıcının ayar / tam ekran düğmeleri var). Parmakla sürüklenir, yer
+    // dikey ve yatay için ayrı ayrı hatırlanır.
+    // Konum, alanın oranı olarak saklanır: fx = hapın sağ kenarı, fy = hapın orta noktası.
+    private val prefs by lazy { getSharedPreferences("yerlesim", Context.MODE_PRIVATE) }
+    private var floatDragging = false
+    private var floatUp = false
+    private var dragX = 0f
+    private var dragY = 0f
+    private var dragStartX = 0
+    private var dragStartY = 0
+
+    private fun floatHalf() = dp(39) // düğme sırasının yarı yüksekliği (12 + 54/2)
+
+    private fun floatSpot(landscape: Boolean, left: Int, top: Int, right: Int, bottom: Int, fw: Int, fh: Int): Pair<Int, Int> {
+        val key = if (landscape) "yatay" else "dikey"
+        val fx = prefs.getFloat("${key}X", 1f)
+        val fy = prefs.getFloat("${key}Y", if (landscape) 0.5f else 0.93f)
+        val aw = right - left
+        val ah = bottom - top
+        val edge = (left + fx * aw).roundToInt().coerceIn(left + min(fw, aw), right)
+        val x = (edge - fw).coerceIn(left, max(left, right - fw))
+        val cy = (top + fy * ah).roundToInt()
+        // Alt yarıdaysa bildirimler düğmenin üstünde açılır (pencere yukarı doğru büyür)
+        val up = fy > 0.5f
+        // Hap moduna her girişte de bildir (arayüz bu arada yeniden yüklenmiş olabilir)
+        if (up != floatUp || lastLayoutMode != "float") {
+            floatUp = up
+            js("window.OI && OI.setFloatUp && OI.setFloatUp($up)")
+        }
+        val y = (if (up) cy + floatHalf() - fh else cy - floatHalf()).coerceIn(top, max(top, bottom - fh))
+        return x to y
+    }
+
+    // Test sürümü: sohbet düğmesinin (turuncu) ekrandaki orta noktası
+    private fun logFloat() {
+        val lp = ui.layoutParams as? FrameLayout.LayoutParams ?: return
+        val cx = lp.leftMargin + lp.width - dp(39)
+        val cy = if (floatUp) lp.topMargin + lp.height - dp(39) else lp.topMargin + dp(39)
+        Log.i(TAG, "Sohbet düğmesi: $cx $cy")
+    }
+
+    private fun floatDrag(e: MotionEvent): Boolean {
+        if (lastLayoutMode != "float") return false
+        val lp = ui.layoutParams as? FrameLayout.LayoutParams ?: return false
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                dragX = e.rawX
+                dragY = e.rawY
+                dragStartX = lp.leftMargin
+                dragStartY = lp.topMargin
+                floatDragging = false
+                return false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = e.rawX - dragX
+                val dy = e.rawY - dragY
+                if (!floatDragging) {
+                    if (hypot(dx, dy) < dp(10)) return false
+                    floatDragging = true
+                    // Düğme "basıldı" sanmasın
+                    val cancel = MotionEvent.obtain(e).apply { action = MotionEvent.ACTION_CANCEL }
+                    ui.onTouchEvent(cancel)
+                    cancel.recycle()
+                }
+                val w = root.width
+                val h = root.height
+                place(
+                    ui,
+                    (dragStartX + dx.roundToInt()).coerceIn(0, max(0, w - lp.width)),
+                    (dragStartY + dy.roundToInt()).coerceIn(0, max(0, h - lp.height)),
+                    lp.width, lp.height,
+                )
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (!floatDragging) return false
+                floatDragging = false
+                val (il, itop, ir, ib) = insets.toList()
+                val w = root.width
+                val h = root.height
+                val aw = (w - ir - il).coerceAtLeast(1)
+                val ah = (h - ib - itop).coerceAtLeast(1)
+                val now = ui.layoutParams as FrameLayout.LayoutParams
+                val fx = ((now.leftMargin + now.width - il).toFloat() / aw).coerceIn(0f, 1f)
+                val cy = if (floatUp) now.topMargin + now.height - floatHalf() else now.topMargin + floatHalf()
+                val fy = ((cy - itop).toFloat() / ah).coerceIn(0f, 1f)
+                val key = if (w > h) "yatay" else "dikey"
+                prefs.edit().putFloat("${key}X", fx).putFloat("${key}Y", fy).apply()
+                relayout()
+                if (BuildConfig.DEBUG) ui.postDelayed({ logFloat() }, 300)
+                return true
+            }
+        }
+        return floatDragging
     }
 
     private fun place(v: View, x: Int, y: Int, width: Int, height: Int) {

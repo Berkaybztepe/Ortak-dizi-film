@@ -20,8 +20,10 @@ import android.text.Spanned
 import android.text.TextUtils
 import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
@@ -29,7 +31,10 @@ import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.max
+import kotlin.math.sign
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
@@ -38,15 +43,15 @@ private val CORAL = Color.parseColor("#FF6B3D")
 private val PAPER = Color.parseColor("#F7F3EE")
 
 // Oynatıcının üstündeki yerel katman. Dizi sitesinin sayfasına bağlı değildir: site tam ekrana
-// geçse, kendi katmanlarını en üste koysa da görünür. Dokunuşları yalnızca geri düğmesi alır;
-// gerisi alttaki oynatıcıya geçer.
+// geçse, kendi katmanlarını en üste koysa da görünür. Dokunuşları yalnızca geri düğmesi, akan
+// mesajlar ve uyarı alır; gerisi alttaki oynatıcıya geçer.
 //   - sol üstte ayrı bir "geri" düğmesi
 //   - tepkiler (emoji) sağ altta yükselir
-//   - sohbet mesajları sol altta akar
+//   - sohbet mesajları sol altta akar (kaydırınca kapanır, dokununca sohbet açılır)
 //   - büyük uyarılar ("Kardeş bölümden çıktı, video durdu")
 //   - 3-2-1 geri sayımı ve "X yükleniyor, bekleniyor…" notu
 @SuppressLint("ViewConstructor")
-class PlayerOverlay(context: Context, private val onBack: () -> Unit) : FrameLayout(context) {
+class PlayerOverlay(context: Context, private val onBack: () -> Unit, private val onChat: () -> Unit) : FrameLayout(context) {
     private val density = resources.displayMetrics.density
     private fun dp(v: Float) = (v * density).roundToInt()
     private val main = Handler(Looper.getMainLooper())
@@ -60,7 +65,10 @@ class PlayerOverlay(context: Context, private val onBack: () -> Unit) : FrameLay
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.BOTTOM or Gravity.START
     }
-    private val notice = pill(15f).apply { visibility = View.GONE }
+    private val notice = pill(15f).apply {
+        visibility = View.GONE
+        swipeAway(this, null) { visibility = View.GONE }
+    }
     private val note = pill(14f).apply { visibility = View.GONE }
     private val count = TextView(context).apply {
         setTextColor(PAPER)
@@ -115,6 +123,50 @@ class PlayerOverlay(context: Context, private val onBack: () -> Unit) : FrameLay
             setStroke(dp(2f), CORAL)
         }
         elevation = dp(6f).toFloat()
+    }
+
+    // Parmakla yana kaydırılınca kaybolur; kaydırmadan dokunulursa onTap
+    @SuppressLint("ClickableViewAccessibility")
+    private fun swipeAway(v: View, onTap: (() -> Unit)?, onGone: () -> Unit) {
+        var x0 = 0f
+        var y0 = 0f
+        var moved = false
+        v.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    x0 = e.rawX
+                    y0 = e.rawY
+                    moved = false
+                    v.animate().cancel()
+                    v.alpha = 1f
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = e.rawX - x0
+                    if (abs(dx) > dp(8f) || abs(e.rawY - y0) > dp(8f)) moved = true
+                    v.translationX = dx
+                    v.alpha = (1f - abs(dx) / max(v.width, 1)).coerceIn(0.2f, 1f)
+                }
+                MotionEvent.ACTION_UP -> {
+                    val dx = e.rawX - x0
+                    if (abs(dx) > max(dp(56f), v.width / 4)) {
+                        v.animate().translationX(sign(dx) * v.width * 1.2f).alpha(0f).setDuration(180)
+                            .withEndAction {
+                                v.translationX = 0f
+                                v.alpha = 1f
+                                onGone()
+                            }.start()
+                    } else {
+                        v.animate().translationX(0f).alpha(1f).setDuration(180).start()
+                        if (!moved) {
+                            v.performClick()
+                            onTap?.invoke()
+                        }
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> v.animate().translationX(0f).alpha(1f).setDuration(180).start()
+            }
+            true
+        }
     }
 
     /** Geri düğmesinin ekrandaki orta noktası (test sürümü günlüğe yazar); görünmüyorsa null */
@@ -211,9 +263,18 @@ class PlayerOverlay(context: Context, private val onBack: () -> Unit) : FrameLay
                 setColor(Color.argb(215, 11, 11, 12))
             }
         }
+        swipeAway(tv, onChat) {
+            ticker.removeView(tv)
+            if (BuildConfig.DEBUG) Log.i("OrtakIzle", "Mesaj kaydırılıp kapatıldı")
+        }
         ticker.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(6f)
         })
+        if (BuildConfig.DEBUG) tv.postDelayed({
+            val loc = IntArray(2)
+            tv.getLocationOnScreen(loc)
+            Log.i("OrtakIzle", "Mesaj yeri: ${loc[0] + tv.width / 2} ${loc[1] + tv.height / 2}")
+        }, 600)
         tv.alpha = 0f
         tv.translationX = -dp(40f).toFloat()
         tv.animate().alpha(1f).translationX(0f).setDuration(260).setInterpolator(DecelerateInterpolator()).start()
@@ -225,6 +286,7 @@ class PlayerOverlay(context: Context, private val onBack: () -> Unit) : FrameLay
     fun notice(text: String, ms: Long) {
         noticeHide?.let { main.removeCallbacks(it) }
         notice.text = text
+        notice.translationX = 0f
         if (notice.visibility != View.VISIBLE) {
             notice.visibility = View.VISIBLE
             notice.alpha = 0f
