@@ -35,7 +35,7 @@ export async function makeApp(browser, { label, port, brokerWs, video, w = 1280,
   await player.addInitScript(BOOT);
   await player.exposeFunction('__toUi', async (raw) => {
     const o = JSON.parse(raw);
-    if (debug && !['engine', 'drift'].includes(o.t)) console.log('      ', label, '→', raw.slice(0, 160));
+    if (debug && !['engine', 'drift'].includes(o.t)) console.log('      ', new Date().toISOString().slice(17, 23), label, '→', raw.slice(0, 160));
     if (!ALLOWED.has(o.t)) return;
     await ui.evaluate((m) => window.OI && OI.fromPlayer(m), o).catch(() => {});
   });
@@ -54,6 +54,7 @@ export async function makeApp(browser, { label, port, brokerWs, video, w = 1280,
       await player.goto(arg);
       await ui.evaluate((m) => OI.setLayout({ mode: m }), app.layout === 'full' ? 'side' : app.layout);
     } else if (fn === 'toPlayer') {
+      if (debug && /"t":"(sync|tick|countdown|welcome)"/.test(arg)) console.log('      ', new Date().toISOString().slice(17, 23), label, '←', String(arg).slice(0, 170));
       await player.evaluate((j) => window.__ortakIzleRecv && __ortakIzleRecv(j), arg).catch(() => {});
     } else if (fn === 'closePlayer') {
       await player.goto('about:blank');

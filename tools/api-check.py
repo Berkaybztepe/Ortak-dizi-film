@@ -11,6 +11,10 @@ GUARDED = {
     'android/net/nsd/NsdManager.registerServiceInfoCallback(Landroid/net/nsd/NsdServiceInfo;Ljava/util/concurrent/Executor;Landroid/net/nsd/NsdManager$ServiceInfoCallback;)V',
     'android/net/nsd/NsdManager.unregisterServiceInfoCallback(Landroid/net/nsd/NsdManager$ServiceInfoCallback;)V',
     'android/net/nsd/NsdServiceInfo.getHostAddresses()Ljava/util/List;',
+    # Updater: imza ve sürüm kodu (Android 9+ yolu; altında eski API kullanılıyor)
+    'android/content/pm/PackageInfo.getLongVersionCode()J',
+    'android/content/pm/PackageInfo.signingInfo',
+    'android/content/pm/SigningInfo.getApkContentsSigners()[Landroid/content/pm/Signature;',
 }
 sdk = os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT') or '/root/android-sdk'
 cands = sorted(glob.glob(sdk + '/platforms/android-*/data/api-versions.xml'))

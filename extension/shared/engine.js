@@ -338,7 +338,8 @@
     let suppressUntil = 0; // uzaktan bir şey uyguladıktan hemen sonra konum bildirimi gönderme
     // Kendi yaptığımız (programatik) hareketlerin yankısını tanımak için beklenen olaylar.
     // Yalnızca bunlar yok sayılır; kullanıcının aynı anda yaptığı hareket her zaman geçer.
-    const expect = { seek: null, paused: null, until: 0 };
+    // Sarma ve oynat/durdur beklentilerinin süreleri ayrı tutulur (biri ötekini uzatmasın)
+    const expect = { seek: null, seekUntil: 0, paused: null, pausedUntil: 0 };
     let pending = null;
     let lastUrl = '';
     let navTimer = null;
@@ -349,6 +350,7 @@
     let starting = null;
     let lastEngineStatus = '';
     let lastLocal = 0; // en son kendi hareketimizi gönderdiğimiz an
+    let leadSince = 0; // aynı an, sunucu saatiyle
     let lastRemote = 0; // en son başkasının hareketini aldığımız an
     // Uzaktan gelen bir durumu uyguladıktan sonra oynatıcı onu geri alırsa (ör. Disney+ kendiliğinden
     // yeniden oynatırsa) bunu kullanıcı hareketi sanıp odaya yaymamak için kısa bir koruma süresi
@@ -569,7 +571,8 @@
       }
       if (t === 'ended') return;
       if (!connected()) return;
-      const expectedPlayState = expect.paused !== null && Date.now() < expect.until && video.paused === expect.paused;
+      // (kullanıcı tam o anda ekrana dokunduysa hareket onundur, yankı sayılmaz)
+      const expectedPlayState = expect.paused !== null && Date.now() < expect.pausedUntil && video.paused === expect.paused && Date.now() - lastInput > 400;
       if (starting) {
         // Planlı başlangıcı bekliyoruz: oynatıcı kendiliğinden oynarsa (ya da kullanıcı erken basarsa) beklet
         if (t === 'play' && !video.paused && !expectedPlayState) progPause();
@@ -613,10 +616,15 @@
       pending.timer = setTimeout(flushLocal, 300);
     }
 
+    // Yükleniyor/bitti bilgisi kaybolursa diğeri boşuna bekler: değişiklik 1 ve 3 sn sonra tekrarlanır
+    let bufferRepeat = [];
     function setBuffering(on) {
       if (on === bufferingSent) return;
       bufferingSent = on;
-      if (connected()) post({ t: 'buffer', on });
+      for (const t of bufferRepeat) clearTimeout(t);
+      if (!connected()) return;
+      post({ t: 'buffer', on });
+      bufferRepeat = [1000, 3000].map((ms) => setTimeout(() => connected() && bufferingSent === on && post({ t: 'buffer', on, again: true }), ms));
     }
 
     // Şu anki konum (dakika biliniyorsa bölüm dakikası, yoksa videonun kendi zamanı)
@@ -662,6 +670,7 @@
       if (action === 'seek' && delta !== null && Number.isFinite(delta)) msg.delta = Math.round(delta * 100) / 100;
       post(msg);
       lastLocal = Date.now();
+      leadSince = serverNow();
       lastChangeAt = lastLocal;
       applied = null;
       roomState = { paused, time, at: msg.at, url: location.href, by: me?.id, rel };
@@ -704,7 +713,7 @@
 
     // ---------------------------------------------------------------- uygulama
     function isExpectedSeek() {
-      return expect.seek !== null && Date.now() < expect.until && Math.abs(video.currentTime - expect.seek) < 1.5;
+      return expect.seek !== null && Date.now() < expect.seekUntil && Math.abs(video.currentTime - expect.seek) < 1.5;
     }
     // Programatik hareketler: yankıları tanınır
     function progSeek(t) {
@@ -712,17 +721,17 @@
       const max = Number.isFinite(video.duration) ? Math.max(0, video.duration - 0.5) : Infinity;
       t = Math.min(max, Math.max(0, t));
       expect.seek = t;
-      expect.until = Date.now() + 2500;
+      expect.seekUntil = Date.now() + 2500;
       seekTo(t);
     }
     function progPause() {
       expect.paused = true;
-      expect.until = Date.now() + 2500;
+      expect.pausedUntil = Date.now() + 2500;
       video.pause();
     }
     function progPlay(onBlocked) {
       expect.paused = false;
-      expect.until = Date.now() + 2500;
+      expect.pausedUntil = Date.now() + 2500;
       playVideo(onBlocked);
     }
 
@@ -881,6 +890,7 @@
       if (rel) msg.rel = true;
       post(msg);
       lastLocal = Date.now();
+      leadSince = serverNow();
       lastChangeAt = lastLocal;
       applied = null;
       roomState = { paused: false, time, at, url: location.href, by: me?.id, rel };
@@ -983,6 +993,25 @@
       }
     }, 250);
 
+    // (Yeniden) bağlanınca: durumumuzu yeniden bildir; bağlantı koptuğu sırada son hareketi biz
+    // yaptıysak (gitmemiş olabilir) odanın eski durumuna dönme, kendi durumumuzu yeniden duyur
+    function joined() {
+      lastUrl = '';
+      bufferingSent = !bufferingSent;
+      setBuffering(!bufferingSent);
+      if (video && lastLocal > lastRemote && Date.now() - lastLocal < 120000 && !starting) {
+        const { time, rel } = position();
+        const msg = { t: 'sync', action: video.paused ? 'pause' : 'play', time, paused: video.paused, at: serverNow() };
+        if (rel) msg.rel = true;
+        post(msg);
+        lastLocal = Date.now();
+        leadSince = serverNow();
+        roomState = { paused: video.paused, time, at: msg.at, url: location.href, by: me?.id, rel };
+      } else {
+        joinRoomPosition();
+      }
+    }
+
     // ---------------------------------------------------------------- gelen mesajlar
     function receive(m) {
       if (!m || typeof m !== 'object') return;
@@ -995,21 +1024,7 @@
           me = m.room?.me || null;
           members = m.room?.members || [];
           roomState = m.room?.state || null;
-          if (connected() && !was) {
-            lastUrl = '';
-            bufferingSent = !bufferingSent; // yeniden bağlanınca durumu tekrar gönder
-            setBuffering(!bufferingSent);
-            // Bağlantı koptuğu sırada son hareketi biz yaptıysak (gitmemiş olabilir) yeniden bildir
-            if (video && lastLocal > lastRemote && Date.now() - lastLocal < 120000 && !starting) {
-              const { time, rel } = position();
-              const msg = { t: 'sync', action: video.paused ? 'pause' : 'play', time, paused: video.paused, at: serverNow() };
-              if (rel) msg.rel = true;
-              post(msg);
-              lastLocal = Date.now();
-            } else {
-              joinRoomPosition();
-            }
-          }
+          if (connected() && !was) joined();
           updateHold();
           break;
         }
@@ -1022,8 +1037,7 @@
           me = m.you;
           members = m.members || [];
           roomState = m.state || null;
-          lastUrl = '';
-          joinRoomPosition();
+          joined();
           break;
         case 'member-join':
           members = members.filter((x) => x.id !== m.member.id).concat(m.member);
@@ -1088,6 +1102,9 @@
           // Biz az önce bir şey yaptıysak (ya da şu an sarıyorsak), yolda kalmış eski bildirim
           // bizim hareketimizi ezmesin
           if (Date.now() - lastLocal < 2500 || pending || starting) break;
+          // Bizim son hareketimiz bu kumandanınkinden yeniyse (bizim mesajımız yolda kaybolmuş
+          // olabilir) eski duruma dönme: bizim bildirimlerimiz sunucuda kumandayı devralır
+          if (roomState && me && roomState.by === me.id && m.by !== me.id && typeof m.since === 'number' && leadSince > m.since) break;
           if (video && (video.seeking || Date.now() - lastSeekAt < 2000)) break;
           roomState = { paused: m.paused, time: m.time, at: m.at, url: m.url, by: m.by, rel: !!m.rel };
           if (applyable(m.url) && !holding) applyState(roomState, false);
@@ -1147,6 +1164,7 @@
         if (rel) msg.rel = true;
         post(msg);
         lastLocal = Date.now();
+      leadSince = serverNow();
         roomState = { paused: true, time, at: msg.at, url: location.href, by: me?.id, rel };
       } else if (cmd === 'seekBy') {
         if (!video) return;
@@ -1163,6 +1181,7 @@
         if (rel) clearOffsets();
         post(rel ? { t: 'countdown', time, rel: true } : { t: 'countdown', time });
         lastLocal = Date.now();
+      leadSince = serverNow();
       } else if (cmd === 'react' && arg?.emoji) {
         post({ t: 'react', emoji: arg.emoji });
         if (video) stage.react(arg.emoji, null);
@@ -1257,7 +1276,9 @@
       lastTickAt = now;
       lastTickPaused = paused;
       const { time, rel } = position();
-      const tick = { t: 'tick', time, paused, at: serverNow() };
+      // since: son kendi hareketimizin anı. O hareketin mesajı yolda kaybolduysa sunucu kumandayı
+      // hâlâ diğerinde sanır; daha yeni "since" görünce bizimkini kabul eder.
+      const tick = { t: 'tick', time, paused, at: serverNow(), since: leadSince };
       if (rel) tick.rel = true;
       post(tick);
       roomState = { ...roomState, paused, time, at: tick.at, rel };

@@ -65,7 +65,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var overlay: PlayerOverlay
     private var player: WebView? = null
     private var backAllowed = true
-    private var installAfterPermission = false
     private var popup: View? = null
     private var popupWeb: WebView? = null
     private var customView: View? = null
@@ -165,10 +164,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         js("window.OI && OI.onResume()")
         // "Bilinmeyen uygulamaları yükle" izni verilip dönüldüyse kuruluma devam et
-        if (installAfterPermission && Updater.pending != null && Updater.canInstall(this)) {
-            installAfterPermission = false
-            Updater.install(this)
-        }
+        // (Android izni açınca uygulamayı kapatıp yeniden başlatabilir; işaret kalıcıdır)
+        Updater.resumeAfterPermission(this)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -384,7 +381,9 @@ class MainActivity : ComponentActivity() {
         fun installUpdate() {
             val info = lastUpdate ?: return
             Thread {
-                val err = Updater.download(this@MainActivity, info) { p -> js("OI.onUpdateProgress($p)") }
+                // Zaten indirildiyse (ör. kurulum ekranı kapatıldıysa) yeniden indirme
+                val ready = Updater.pending?.takeIf { it.exists() && it.name == "OrtakIzle-${info.code}.apk" } != null
+                val err = if (ready) null else Updater.download(this@MainActivity, info) { p -> js("OI.onUpdateProgress($p)") }
                 if (err != null) {
                     js("OI.onUpdateProgress(${JSONObject.quote(err)})")
                     return@Thread
@@ -394,7 +393,7 @@ class MainActivity : ComponentActivity() {
                     when (val r = Updater.install(this@MainActivity)) {
                         null -> {}
                         "izin" -> {
-                            installAfterPermission = true
+                            Updater.markAwaitingPermission(this@MainActivity)
                             js("OI.onUpdateProgress(${JSONObject.quote("izin")})")
                         }
                         else -> js("OI.onUpdateProgress(${JSONObject.quote(r)})")

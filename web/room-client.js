@@ -114,7 +114,10 @@
         const body = [0, 4, 77, 81, 84, 84, 4, 2, 0, 30, id.length >> 8, id.length & 255, ...id];
         this._send(0x10, body);
       };
-      this.ws.onmessage = (e) => this._data(new Uint8Array(e.data));
+      this.ws.onmessage = (e) => {
+        this.lastIn = Date.now();
+        this._data(new Uint8Array(e.data));
+      };
       this.ws.onclose = this.ws.onerror = () => this._close();
     }
     _send(type, body) {
@@ -164,7 +167,12 @@
         // CONNACK
         if (body[1] !== 0) return this._close();
         this.connected = true;
-        this.ping = setInterval(() => this._send(0xc0, []), 20000);
+        this.lastIn = Date.now();
+        // 20 sn'de bir ping; aracıdan 50 sn hiçbir şey gelmezse bağlantı ölmüştür
+        this.ping = setInterval(() => {
+          if (Date.now() - this.lastIn > 50000) return this._close();
+          this._send(0xc0, []);
+        }, 20000);
         this.h.onConnect && this.h.onConnect();
       } else if (type === 3) {
         // PUBLISH (QoS 0)
@@ -282,7 +290,8 @@
             if (l !== link) l.mqtt.end();
           }
           this.readyState = 1;
-          this.watch = setInterval(() => Date.now() - this.lastRx > 40000 && this._lost(), 5000);
+          // Oda 6 sn'de bir ping'e cevap verir: 25 sn ses yoksa yol ölmüştür, hemen yeniden bağlan
+          this.watch = setInterval(() => Date.now() - this.lastRx > 25000 && this._lost(), 5000);
           this.onopen && this.onopen();
         } else if ((ctl._ === 'bye' || ctl._ === 'reset') && this.active === link) {
           this._lost();
@@ -439,9 +448,9 @@
         clearInterval(this.pingTimer);
         // 6 sn'de bir: saat farkını tazeler, kaçan sohbet mesajını fark ettirir,
         // servis çalışanını uyanık tutar.
-        // 45 sn'dir hiçbir şey gelmediyse bağlantı ölmüştür: kapatıp yeniden bağlan
+        // 25 sn'dir hiçbir şey gelmediyse bağlantı ölmüştür: kapatıp yeniden bağlan
         this.pingTimer = setInterval(() => {
-          if (Date.now() - lastRx > 45000) {
+          if (Date.now() - lastRx > 25000) {
             try {
               ws.close();
             } catch {}
@@ -503,7 +512,7 @@
 
     // Kaçırılan sohbet mesajlarını iste (en fazla 3 sn'de bir)
     _resend() {
-      if (Date.now() - (this.lastResend || 0) < 3000) return;
+      if (Date.now() - (this.lastResend || 0) < 2000) return;
       this.lastResend = Date.now();
       const have = this.history.reduce((a, h) => Math.max(a, h.seq || 0), 0);
       // Geçmişteki en eski boşluğun öncesinden iste
@@ -580,7 +589,7 @@
     }
 
     _handle(m) {
-      // Sunucuda bizim görmediğimiz sohbet mesajı var mı? (pong ve tick söyler)
+      // Sunucuda bizim görmediğimiz sohbet mesajı var mı? (pong, tick ve drift söyler)
       if (this.me && typeof m.cs === 'number' && m.cs > (this.lastSeq || 0)) this._resend();
       switch (m.t) {
         case 'pong': {

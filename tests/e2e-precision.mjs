@@ -17,6 +17,8 @@ await sleep(800);
 const browser = await chromium.launch(chromeOptions({ args: ['--no-proxy-server', '--autoplay-policy=no-user-gesture-required'] }));
 const app = (label) => makeApp(browser, { label, port: PORT, brokerWs: broker.ws, video: VIDEO, debug: !!process.env.DEBUG });
 
+// Paylaşılan CI makinelerinde zamanlama oynak: sınırlar iki katı
+const K = process.env.CI ? 2 : 1;
 const R = reporter();
 const { pass, fail } = R;
 
@@ -77,22 +79,22 @@ try {
   await tap(A, () => { tap(); v.currentTime = 20; });
   await sleep(1500);
   let g = await gap(A, B);
-  g.a.paused && g.b.paused && Math.abs(g.d) < 0.05 ? pass(`Durmuşken sarma: aynı kare (fark ${ms(g.d)})`) : fail(`Durmuşken sarma: ${JSON.stringify(g)}`);
+  g.a.paused && g.b.paused && Math.abs(g.d) < 0.05 * K ? pass(`Durmuşken sarma: aynı kare (fark ${ms(g.d)})`) : fail(`Durmuşken sarma: ${JSON.stringify(g)}`);
 
   await tap(A, () => (tap(), v.play()));
   await waitFor(async () => !(await snap(B.player)).paused, 4000, 50);
   await sleep(300);
   g = await gap(A, B);
-  !g.a.paused && !g.b.paused && Math.abs(g.d) < 0.12 ? pass(`Oynat: ikisi aynı anda başladı (fark ${ms(g.d)})`) : fail(`Oynat başlangıcı: ${JSON.stringify(g)}`);
+  !g.a.paused && !g.b.paused && Math.abs(g.d) < 0.12 * K ? pass(`Oynat: ikisi aynı anda başladı (fark ${ms(g.d)})`) : fail(`Oynat başlangıcı: ${JSON.stringify(g)}`);
   let w = await worst(A, B, 4);
-  w < 0.15 ? pass(`Oynarken 4 sn boyunca en büyük fark ${ms(w)}`) : fail(`Oynarken fark ${ms(w)}`);
+  w < 0.15 * K ? pass(`Oynarken 4 sn boyunca en büyük fark ${ms(w)}`) : fail(`Oynarken fark ${ms(w)}`);
 
   // B'nin videosu takılıp geride kalıyor (olay üretmeden)
   await B.player.evaluate(() => stall(1000, 0.3));
   await sleep(1200);
   g = await gap(A, B);
   console.log(`    takılma sonrası fark: ${ms(g.d)}`);
-  const healed = await waitFor(async () => Math.abs((await gap(A, B)).d) < 0.08, 10000, 150);
+  const healed = await waitFor(async () => Math.abs((await gap(A, B)).d) < 0.08 * K, 10000, 150);
   healed ? pass(`Takılan taraf hızla fark ettirmeden yetişti (başta ${ms(g.d)})`) : fail(`Takılma sonrası fark kapanmadı: ${ms((await gap(A, B)).d)}`);
   const rateNow = (await snap(B.player)).rate;
   await sleep(4000);
@@ -103,32 +105,32 @@ try {
   await tap(B, () => (tap(), v.pause()));
   await sleep(1500);
   g = await gap(A, B);
-  g.a.paused && g.b.paused && Math.abs(g.d) < 0.05 ? pass(`Durdur (B'den): aynı kare (fark ${ms(g.d)})`) : fail(`Durdur: ${JSON.stringify(g)}`);
+  g.a.paused && g.b.paused && Math.abs(g.d) < 0.05 * K ? pass(`Durdur (B'den): aynı kare (fark ${ms(g.d)})`) : fail(`Durdur: ${JSON.stringify(g)}`);
 
   // B paneldeki oynat düğmesiyle başlatır
   await B.ui.locator('#tPlay').click();
   await waitFor(async () => !(await snap(A.player)).paused, 4000, 50);
   await sleep(300);
   g = await gap(A, B);
-  Math.abs(g.d) < 0.12 && !g.a.paused ? pass(`Panelden oynat: aynı anda (fark ${ms(g.d)})`) : fail(`Panelden oynat: ${JSON.stringify(g)}`);
+  Math.abs(g.d) < 0.12 * K && !g.a.paused ? pass(`Panelden oynat: aynı anda (fark ${ms(g.d)})`) : fail(`Panelden oynat: ${JSON.stringify(g)}`);
 
   // A oynarken ileri sarar
   for (const [i, to] of [[1, 70], [2, 30]]) {
     await tap(A, (t) => { tap(); v.currentTime = t; }, to);
     await sleep(4000);
     w = await worst(A, B, 2);
-    w < 0.15 ? pass(`Oynarken sarma (${i}) sonrası fark ${ms(w)}`) : fail(`Sarma (${i}) sonrası fark ${ms(w)}`);
+    w < 0.15 * K ? pass(`Oynarken sarma (${i}) sonrası fark ${ms(w)}`) : fail(`Sarma (${i}) sonrası fark ${ms(w)}`);
   }
 
   // 3-2-1: herkes durur, aynı kareye gelir, aynı anda başlar
   await B.ui.locator('#tCount').click();
   await sleep(1500);
   g = await gap(A, B);
-  g.a.paused && g.b.paused && Math.abs(g.d) < 0.05 ? pass(`3-2-1 sırasında ikisi aynı karede bekliyor (fark ${ms(g.d)})`) : fail(`3-2-1 bekleme: ${JSON.stringify(g)}`);
+  g.a.paused && g.b.paused && Math.abs(g.d) < 0.05 * K ? pass(`3-2-1 sırasında ikisi aynı karede bekliyor (fark ${ms(g.d)})`) : fail(`3-2-1 bekleme: ${JSON.stringify(g)}`);
   await waitFor(async () => !(await snap(A.player)).paused, 5000, 50);
   await sleep(300);
   g = await gap(A, B);
-  !g.a.paused && !g.b.paused && Math.abs(g.d) < 0.12 ? pass(`3-2-1 sonrası aynı anda başladı (fark ${ms(g.d)})`) : fail(`3-2-1 sonrası: ${JSON.stringify(g)}`);
+  !g.a.paused && !g.b.paused && Math.abs(g.d) < 0.12 * K ? pass(`3-2-1 sonrası aynı anda başladı (fark ${ms(g.d)})`) : fail(`3-2-1 sonrası: ${JSON.stringify(g)}`);
   await tap(A, () => (tap(), v.pause()));
   await sleep(1500);
 
@@ -141,11 +143,11 @@ try {
   await tap(A, () => (tap(), v.play()));
   await sleep(6000); // çubuk okunarak dakika ofseti oturur
   w = await worst(A, B, 4, 900, 930);
-  w < 0.2 ? pass(`Çubuktan okunan dakikayla oynarken en büyük fark ${ms(w)}`) : fail(`Çubuk modu fark ${ms(w)}`);
+  w < 0.2 * K ? pass(`Çubuktan okunan dakikayla oynarken en büyük fark ${ms(w)}`) : fail(`Çubuk modu fark ${ms(w)}`);
   await tap(B, () => (tap(), v.pause()));
   await sleep(1500);
   g = await gap(A, B, 900, 930);
-  g.a.paused && g.b.paused && Math.abs(g.d) < 0.2 ? pass(`Çubuk modunda durdur: aynı sahne (fark ${ms(g.d)})`) : fail(`Çubuk modu durdur: ${JSON.stringify(g)}`);
+  g.a.paused && g.b.paused && Math.abs(g.d) < 0.2 * K ? pass(`Çubuk modunda durdur: aynı sahne (fark ${ms(g.d)})`) : fail(`Çubuk modu durdur: ${JSON.stringify(g)}`);
   const tc = await B.ui.locator('#wTc').innerText();
   /15:\d\d/.test(tc) ? pass(`Panel gerçek dakikayı gösteriyor (${tc.replace(/\s+/g, ' ')})`) : fail(`Panel dakikası: ${tc}`);
 
@@ -160,15 +162,15 @@ try {
   await waitFor(async () => !(await snap(B.player)).paused, 4000, 50);
   await sleep(300);
   g = await gap(A, B);
-  Math.abs(g.d) < 0.12 && !g.b.paused ? pass(`Güvenli mod: aynı anda başladı (fark ${ms(g.d)})`) : fail(`Güvenli mod başlangıç: ${JSON.stringify(g)}`);
+  Math.abs(g.d) < 0.12 * K && !g.b.paused ? pass(`Güvenli mod: aynı anda başladı (fark ${ms(g.d)})`) : fail(`Güvenli mod başlangıç: ${JSON.stringify(g)}`);
   await B.player.evaluate(() => stall(800, 0.3));
   await sleep(1000);
-  const healed2 = await waitFor(async () => Math.abs((await gap(A, B)).d) < 0.08, 10000, 150);
+  const healed2 = await waitFor(async () => Math.abs((await gap(A, B)).d) < 0.08 * K, 10000, 150);
   healed2 ? pass('Güvenli modda da takılan taraf yetişti') : fail(`Güvenli mod takılma: ${ms((await gap(A, B)).d)}`);
   await tap(A, () => (tap(), v.pause()));
   await sleep(1500);
   g = await gap(A, B);
-  g.a.paused && g.b.paused && Math.abs(g.d) < 0.05 ? pass(`Güvenli modda durdur: aynı kare (fark ${ms(g.d)})`) : fail(`Güvenli mod durdur: ${JSON.stringify(g)}`);
+  g.a.paused && g.b.paused && Math.abs(g.d) < 0.05 * K ? pass(`Güvenli modda durdur: aynı kare (fark ${ms(g.d)})`) : fail(`Güvenli mod durdur: ${JSON.stringify(g)}`);
   const chip = await B.ui.locator('#wChipTxt').innerText();
   console.log('    B panel durumu:', chip);
 

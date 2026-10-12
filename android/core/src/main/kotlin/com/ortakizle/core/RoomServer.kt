@@ -507,6 +507,8 @@ class RoomServer(
         var state = PlayState(true, 0.0, System.currentTimeMillis(), null, null)
         // Kilit açıkken bölümü yalnızca yönetici (odayı açan) seçer; diğerleri onu takip eder
         var lock = true
+        // Son kumanda hareketinin anı (sunucu saati): kaybolmuş hareketi tick'ten tanımak için
+        var lastAction = 0L
     }
 
     private inner class Client(val id: String) {
@@ -558,6 +560,7 @@ class RoomServer(
         val now = System.currentTimeMillis()
         val time = st.time + maxOf(0L, now - st.at) / 1000.0
         room.state = PlayState(true, time, now, st.url, null, st.rel)
+        room.lastAction = now
         broadcast(room, buildJsonObject {
             put("t", "sync")
             put("action", "pause")
@@ -700,7 +703,10 @@ class RoomServer(
                     put("at", System.currentTimeMillis())
                     if (cid.isNotEmpty()) put("cid", cid)
                 }
-                broadcast(room, pushHistory(room, msg))
+                val numbered = pushHistory(room, msg)
+                broadcast(room, numbered)
+                // Bir kez daha gönder: ilk iletim yolda kaybolduysa (istemciler tekrarı göstermez)
+                schedule(1500) { synchronized(lock) { if (room.clients.isNotEmpty()) broadcast(room, numbered) } }
             }
 
             // İstemci arada kaçırdığı sohbet mesajlarını istiyor
@@ -728,6 +734,7 @@ class RoomServer(
                     by = client.id,
                     rel = truthy(m["rel"]),
                 )
+                room.lastAction = minOf(System.currentTimeMillis(), room.state.at)
                 val delta = jsNumber(m["delta"])?.takeIf { it.isFinite() && kotlin.math.abs(it) <= 86400 }
                 broadcast(room, buildJsonObject {
                     put("t", "sync")
@@ -741,15 +748,21 @@ class RoomServer(
 
             // Oynatırken düzenli konum bildirimi (kayma düzeltmesi için)
             "tick" -> {
-                // Sadece son kumanda eden kişinin tick'i durumu belirler
+                // Sadece son kumanda eden kişinin tick'i durumu belirler. İstisna: gönderenin son
+                // hareketi (since) odadaki son hareketten yeniyse o hareketin mesajı yolda kaybolmuştur
                 val by = room.state.by
-                if (!by.isNullOrEmpty() && by != client.id) return
+                if (!by.isNullOrEmpty() && by != client.id) {
+                    val since = jsNumber(m["since"])?.takeIf { it.isFinite() } ?: 0.0
+                    if (!(since > room.lastAction && since <= System.currentTimeMillis() + 2000)) return
+                    room.lastAction = since.toLong()
+                }
                 room.state = PlayState(truthy(m["paused"]), cleanNum(m["time"]), clientAt(m["at"], System.currentTimeMillis()), client.url, client.id, truthy(m["rel"]))
                 broadcast(room, buildJsonObject {
                     put("t", "tick")
                     room.state.putInto(this)
                     put("from", client.id)
                     put("cs", room.seq)
+                    put("since", room.lastAction) // bu kumandanın son hareket anı
                 }, client)
             }
 
@@ -822,6 +835,7 @@ class RoomServer(
                     put("t", "drift")
                     if (err != null) put("err", numJson(Math.round(err * 100) / 100.0)) else put("err", JsonNull)
                     put("from", client.id)
+                    put("cs", room.seq) // son sohbet sıra numarası (kaçan mesaj fark edilsin)
                 }, client)
             }
 
@@ -836,7 +850,8 @@ class RoomServer(
             // Biri yükleniyor (buffer): diğerleri onu bekler
             "buffer" -> {
                 val on = truthy(m["on"])
-                if (client.buffering == on) return
+                // again: istemcinin tekrarı (ilk mesaj kaybolmuş olabilir), aynı durum da iletilir
+                if (client.buffering == on && !truthy(m["again"])) return
                 client.buffering = on
                 broadcast(room, buildJsonObject {
                     put("t", "buffer")
@@ -848,6 +863,7 @@ class RoomServer(
             // 3-2-1 geri sayımla birlikte başlat; herkes (gönderen dahil) aynı anda oynatır
             "countdown" -> {
                 val at = System.currentTimeMillis() + COUNTDOWN_MS
+                room.lastAction = System.currentTimeMillis()
                 val time = cleanNum(m["time"])
                 val rel = truthy(m["rel"])
                 room.state = PlayState(false, time, at, client.url, client.id, rel)

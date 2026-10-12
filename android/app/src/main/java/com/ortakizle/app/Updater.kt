@@ -147,6 +147,33 @@ object Updater {
 
     fun canInstall(context: Context): Boolean = context.packageManager.canRequestPackageInstalls()
 
+    // "Bilinmeyen uygulamaları yükle" izni açılınca Android uygulamayı kapatır: kaldığımız yeri
+    // (indirilmiş dosya önbellekte durur) bir işaretle hatırlarız, uygulama açılınca kuruluma devam
+    private const val PREFS = "guncelleme"
+
+    fun markAwaitingPermission(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("izinBekleniyor", true).apply()
+    }
+
+    /** İzin verilip dönüldüyse kurulum ekranını açar */
+    fun resumeAfterPermission(activity: Activity): Boolean {
+        val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("izinBekleniyor", false) || !canInstall(activity)) return false
+        prefs.edit().remove("izinBekleniyor").apply()
+        if (pending == null) pending = restore(activity)
+        if (pending == null) return false
+        return install(activity) == null
+    }
+
+    // Önbellekte indirilmiş, doğrulanmış en yeni APK
+    private fun restore(context: Context): File? {
+        val files = File(context.cacheDir, "guncelleme").listFiles() ?: return null
+        val re = Regex("OrtakIzle-(\\d+)\\.apk")
+        val best = files.mapNotNull { f -> re.matchEntire(f.name)?.groupValues?.get(1)?.toIntOrNull()?.let { it to f } }
+            .maxByOrNull { it.first } ?: return null
+        return best.second.takeIf { verify(context, it, best.first) == null }
+    }
+
     /** Kurulum ekranını açar; izin yoksa önce "bilinmeyen uygulamaları yükle" ayarına götürür */
     fun install(activity: Activity): String? {
         val file = pending ?: return "Önce güncellemeyi indir."

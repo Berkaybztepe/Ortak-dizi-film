@@ -89,6 +89,22 @@ step('APK kuruluyor');
 if (!process.env.SKIP_INSTALL) console.log(adb(`install -r -g ${new URL('../android/app/build/outputs/apk/debug/app-debug.apk', import.meta.url).pathname}`));
 adb('shell pm clear com.ortakizle.app');
 adb('logcat -c');
+// Güncelleme izni şimdiden (sonradan değişirse Android uygulamayı kapatır)
+if (process.env.UPDATE_DIR) adb('shell appops set com.ortakizle.app REQUEST_INSTALL_PACKAGES allow');
+// Yavaş emülatörde sistem arayüzü "yanıt vermiyor" penceresi açabiliyor: tuş/dokunuştan önce kapat
+const focus = () => {
+  try {
+    return adb('shell dumpsys window | grep mCurrentFocus');
+  } catch {
+    return '';
+  }
+};
+const clearDialogs = async () => {
+  for (let i = 0; i < 4 && /Not Responding/.test(focus()); i++) {
+    adb('shell input keyevent 4'); // "yanıt vermiyor" penceresinde geri = bekle
+    await sleep(1500);
+  }
+};
 // UPDATE_DIR verildiyse uygulama güncellemeyi GitHub yerine sahte siteden (fake-site.mjs) arar
 adb(`shell am start -W -n com.ortakizle.app/.MainActivity --es araci_tcp tcp://10.0.2.2:18870 --es araci_ws ws://10.0.2.2:18871/mqtt${process.env.UPDATE_DIR ? ' --es guncelleme_url http://10.0.2.2:8900/guncelleme' : ''}`);
 
@@ -133,7 +149,17 @@ SHOT('3-oda');
 
 step('Uzaktaki kardeş oda koduyla katılıyor');
 const events = [];
-const kardes = new R.RoomClient({ kind: 'app', onEvent: (m) => events.push(m) });
+let kardesState = '';
+const kardes = new R.RoomClient({
+  kind: 'app',
+  onEvent: (m) => {
+    events.push({ ...m, _rx: Date.now() });
+    if (m.t === 'status' && m.wsState !== kardesState) {
+      kardesState = m.wsState;
+      console.log(`    [kardeş ${new Date().toTimeString().slice(0, 8)}] ${m.wsState}${m.lastError ? ' · ' + m.lastError : ''}`);
+    }
+  },
+});
 kardes.connect({ code, name: 'Kardeş', room: 'salon', password: '', brokers: ['ws://127.0.0.1:18871/mqtt'] });
 const joined = await waitFor(() => kardes.state === 'bağlı' && kardes.members.length === 2, 60000, 500);
 joined ? pass('Kardeş bağlandı, odada 2 kişi') : fail('Kardeş bağlanamadı: ' + kardes.state + ' ' + kardes.error);
@@ -263,6 +289,8 @@ await player.evaluate(() => (window.tap && tap(), v.play()));
 await sleep(2000);
 const onaylar = () => adb('logcat -d -s OrtakIzle').split('\n').filter((l) => /Onay: Bölümden çıkılsın mı/.test(l)).length;
 const o0 = onaylar();
+await clearDialogs();
+await sleep(500);
 adb('shell input keyevent 4');
 const dlg = await waitFor(() => onaylar() > o0, 20000, 700);
 dlg ? pass('Geri tuşunda "Bölümden çıkılsın mı?" onayı açıldı') : fail('Onay penceresi açılmadı');
@@ -271,9 +299,12 @@ SHOT('11-onay');
 adb('shell input keyevent 4'); // pencereyi kapat = vazgeç
 await sleep(2500);
 (await ui.visible('#vWatch')) && !(await player.evaluate(() => v.paused)) ? pass('Vazgeçince bölümde kalındı, video sürüyor') : fail('Bölümden çıkıldı ya da video durdu');
+const exitAt = Date.now();
 // Sol üstteki geri düğmesine dokun
 const btn = backButtonAt() || { x: 70, y: 116 };
 const o1 = onaylar();
+await clearDialogs();
+await sleep(500);
 adb(`shell input tap ${btn.x} ${btn.y}`);
 const dlg2 = await waitFor(() => onaylar() > o1, 20000, 700);
 dlg2 ? pass('Sol üstteki geri düğmesi de onay soruyor') : fail('Geri düğmesi onay sormadı');
@@ -283,7 +314,13 @@ SHOT('11b-onay-dugme');
 adb('shell input keyevent 4');
 await sleep(800);
 await ui.evaluate(() => OI.onConfirm('exit', true));
-const pausedMsg = await waitFor(() => events.find((m) => m.t === 'sync' && m.action === 'pause' && m.from && Date.now() - (m.at || 0) < 30000), 20000, 300);
+// Kardeşin bağlantısı yavaş emülatörde arada yenilenebiliyor: duraklatma mesajı ya da odanın
+// güncel durumu (yeniden bağlanınca gelir) "durdu" olmalı
+const pausedMsg = await waitFor(
+  () => events.find((m) => m.t === 'sync' && m.action === 'pause' && m._rx > exitAt) || (kardes.state === 'bağlı' && kardes.roomState && kardes.roomState.paused),
+  30000,
+  300
+);
 pausedMsg ? pass('Çıkarken önce herkeste durduruldu') : fail('Çıkarken durdurma gitmedi');
 const home = await waitFor(() => ui.visible('#vLobby'), 20000);
 home ? pass('Onaylayınca ana ekrana dönüldü') : fail('Ana ekrana dönülmedi');
@@ -291,16 +328,30 @@ SHOT('12-ana-ekran');
 
 if (process.env.UPDATE_DIR) {
   step('Uygulama içi güncelleme (eskisini silmeden)');
-  adb('shell appops set com.ortakizle.app REQUEST_INSTALL_PACKAGES allow');
   const card = await waitFor(() => ui.visible('#updateCard'), 60000, 1000);
   card ? pass('Ana ekranda güncelleme kartı çıktı: ' + (await ui.text('#updTitle'))) : fail('Güncelleme kartı çıkmadı');
   SHOT('13-guncelleme-karti');
+  await clearDialogs();
+  adb('shell am start -n com.ortakizle.app/.MainActivity'); // uygulama önde olsun (kurulum ekranı ancak öndeyken açılır)
+  await sleep(2000);
   await ui.click('#updGo');
-  const inst = await waitFor(() => /packageinstaller/i.test(adb('shell dumpsys activity activities | grep -i -E "topResumedActivity|mResumedActivity"')), 180000, 3000);
+  let tries = 0;
+  const inst = await waitFor(async () => {
+    await clearDialogs();
+    if (/packageinstaller/i.test(focus())) return true;
+    // İndirme bitti ama kurulum ekranı açılmadıysa (uygulama arkadaydı) "Kur"a yeniden bas
+    if (++tries % 10 === 0 && /Kur/.test(await ui.text('#updGo').catch(() => ''))) {
+      adb('shell am start -n com.ortakizle.app/.MainActivity');
+      await sleep(1500);
+      await ui.click('#updGo').catch(() => {});
+    }
+    return false;
+  }, 180000, 3000);
   inst ? pass('İndirildi, imza doğrulandı, Android kurulum ekranı açıldı') : fail('Kurulum ekranı açılmadı: ' + (await ui.text('#updText').catch(() => '?')));
   SHOT('14-kurulum');
   if (inst) {
     // Video oynamadığı için burada ekran okunabilir: kurulum düğmesini bul ve dokun
+    await clearDialogs();
     let xml = '';
     try {
       adb('shell uiautomator dump /sdcard/oi.xml');

@@ -110,13 +110,13 @@ class MqttLink(
             Socket().apply { connect(InetSocketAddress(uri.host, port), 10_000) }
         }
         sock.tcpNoDelay = true
-        sock.soTimeout = 90_000 // 60 sn'de bir PINGRESP bekleriz
+        sock.soTimeout = 50_000 // 25 sn'de bir ping atarız: 50 sn ses yoksa bağlantı ölmüştür
         socket = sock
         out = sock.getOutputStream()
         try {
             val id = clientId.toByteArray(Charsets.UTF_8)
             val body = ByteArrayOutputStream()
-            body.write(byteArrayOf(0, 4, 'M'.code.toByte(), 'Q'.code.toByte(), 'T'.code.toByte(), 'T'.code.toByte(), 4, 2, 0, 60))
+            body.write(byteArrayOf(0, 4, 'M'.code.toByte(), 'Q'.code.toByte(), 'T'.code.toByte(), 'T'.code.toByte(), 4, 2, 0, 40))
             body.write(id.size shr 8); body.write(id.size and 0xFF); body.write(id)
             send(0x10, body.toByteArray())
             readLoop(BufferedInputStream(sock.getInputStream()))
@@ -357,11 +357,11 @@ class Relay(
         }
     }
 
-    // 45 sn'dir ses vermeyen istemci gitmiş sayılır (istemciler 15 sn'de bir ping atar)
+    // 30 sn'dir ses vermeyen istemci gitmiş sayılır (istemciler 6 sn'de bir ping atar)
     private fun sweep() {
         val now = System.currentTimeMillis()
         for ((cid, p) in peers) {
-            if (now - p.lastSeen > 45_000) {
+            if (now - p.lastSeen > 30_000) {
                 peers.remove(cid)
                 p.conn.close()
             }

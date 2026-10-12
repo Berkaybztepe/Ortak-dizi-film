@@ -121,14 +121,26 @@ function client(port) {
   // Konum bildirimi sadece son kumanda edenden kabul edilir
   b.send({ t: 'tick', time: 10, paused: false });
   await a.none((m) => m.t === 'tick');
-  a.send({ t: 'tick', time: 70, paused: false });
-  assert.strictEqual((await b.next((m) => m.t === 'tick')).time, 70);
 
   // Fark bildirimi diğerlerine gider
   b.send({ t: 'drift', err: 0.1234 });
   assert.strictEqual((await a.next((m) => m.t === 'drift')).err, 0.12);
   b.send({ t: 'drift', err: 'x' });
   assert.strictEqual((await a.next((m) => m.t === 'drift')).err, null);
+
+  // Kumandayı değiştiren hareket yolda kaybolduysa: daha yeni "since" taşıyan tick kabul edilir
+  a.send({ t: 'sync', action: 'pause', time: 70 });
+  await b.next((m) => m.t === 'sync' && m.time === 70);
+  b.send({ t: 'tick', time: 11, paused: true, since: Date.now() - 60000 }); // eski: reddedilir
+  await a.none((m) => m.t === 'tick' && m.time === 11);
+  b.send({ t: 'tick', time: 12, paused: true, since: Date.now() }); // yeni hareket: kumanda B'ye geçer
+  assert.strictEqual((await a.next((m) => m.t === 'tick' && m.time === 12)).by, wb.you.id);
+  a.send({ t: 'tick', time: 13, paused: true }); // artık A'nınki reddedilir
+  await b.none((m) => m.t === 'tick' && m.time === 13);
+  a.send({ t: 'sync', action: 'pause', time: 70 });
+  await b.next((m) => m.t === 'sync' && m.time === 70);
+  a.send({ t: 'tick', time: 70, paused: false });
+  assert.strictEqual((await b.next((m) => m.t === 'tick' && m.time === 70)).time, 70);
 
   // Davet
   b.send({ t: 'invite', url: 'https://play.hbomax.com/video/watch/x/y', title: 'The Last of Us' });
@@ -241,9 +253,11 @@ function client(port) {
   c.raw('{bozuk json');
   c.raw('null');
   c.raw('[1,2]');
-  c.send({ t: 'chat', text: 'x'.repeat(5000) });
+  // (her çalıştırmada farklı metin: önceki çalıştırmanın tekrar gönderimi karışmasın)
+  const LONG = Math.random().toString(36).slice(2, 8) + 'x'.repeat(5000);
+  c.send({ t: 'chat', text: LONG });
   c.send({ t: 'sync', action: 'play', time: 'abc' });
-  const long = await b.next((m) => m.t === 'chat' && !m.system && m.name === 'Üçüncü');
+  const long = await b.next((m) => m.t === 'chat' && !m.system && m.name === 'Üçüncü' && m.text.startsWith(LONG.slice(0, 6)));
   assert.strictEqual(long.text.length, 1000);
   const play = await b.next((m) => m.t === 'sync' && m.name === 'Üçüncü');
   assert.strictEqual(play.time, 0);

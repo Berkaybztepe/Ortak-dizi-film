@@ -1205,8 +1205,13 @@
     onUpdateProgress(p) {
       if (typeof p === 'number') {
         $('updFill').style.width = `${p}%`;
-        $('updText').textContent = p >= 100 ? 'Kurulum ekranı açılıyor… "Güncelle"ye dokun.' : `İndiriliyor… %${p}`;
-        if (p >= 100) setTimeout(() => ($('updGo').disabled = false), 4000);
+        $('updText').textContent = p >= 100 ? 'Kurulum ekranı açılıyor… "Güncelle"ye dokun. Açılmazsa "Kur"a bas.' : `İndiriliyor… %${p}`;
+        if (p >= 100) {
+          setTimeout(() => {
+            $('updGo').disabled = false;
+            $('updGo').textContent = 'Kur';
+          }, 3000);
+        }
         return;
       }
       $('updGo').disabled = false;

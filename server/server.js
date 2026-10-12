@@ -193,6 +193,9 @@ function clientAt(v, now, maxFuture = 500) {
   return Math.round(v);
 }
 
+// Odadaki son kumanda hareketinin anı (sunucu saati): kaybolmuş hareketi tick'ten tanımak için
+const lastAction = new WeakMap();
+
 function hostOf(u) {
   try {
     return new URL(u).hostname.replace(/^www\./, '');
@@ -210,6 +213,7 @@ function pauseForAbsence(room, client, reason, url = client.url) {
   const time = st.time + Math.max(0, now - st.at) / 1000;
   room.state = { paused: true, time, at: now, url: st.url, by: null };
   if (st.rel) room.state.rel = true;
+  lastAction.set(room, now);
   broadcast(room, { t: 'sync', action: 'pause', ...room.state, from: client.id, name: client.name, reason }, client);
   addSystemMessage(room, `${client.name} ${reason === 'left' ? 'odadan ayrıldı' : 'bölümden çıktı'}, video durduruldu.`);
   return true;
@@ -324,6 +328,8 @@ function handle(client, raw) {
       if (cid) msg.cid = cid;
       pushChat(room, msg);
       broadcast(room, msg);
+      // Bir kez daha gönder: ilk iletim yolda kaybolduysa (istemciler tekrarı göstermez)
+      setTimeout(() => room.clients.size && broadcast(room, msg), 1500).unref();
       return;
     }
 
@@ -342,6 +348,7 @@ function handle(client, raw) {
       };
       // rel: gönderenin zamanı içeriğin gerçek dakikası değil (ör. Disney+): konuma atlanmaz
       if (m.rel) room.state.rel = true;
+      lastAction.set(room, Math.min(now, room.state.at));
       const msg = { t: 'sync', action, ...room.state, from: client.id, name: client.name };
       // delta: sarma miktarı (sn), güvenli modda karşı taraf aynı miktarda sarar
       if (action === 'seek' && typeof m.delta === 'number' && Number.isFinite(m.delta) && Math.abs(m.delta) <= 86400) msg.delta = m.delta;
@@ -352,8 +359,13 @@ function handle(client, raw) {
     // Oynatırken düzenli konum bildirimi (kayma düzeltmesi için)
     case 'tick': {
       // Sadece son kumanda eden kişinin tick'i durumu belirler; aksi halde iki
-      // taraf birbirini sonsuza kadar düzeltmeye çalışır.
-      if (room.state.by && room.state.by !== client.id) return;
+      // taraf birbirini sonsuza kadar düzeltmeye çalışır. İstisna: gönderenin son hareketi (since)
+      // odadaki son hareketten yeniyse o hareketin mesajı yolda kaybolmuştur; kumanda ona geçer.
+      if (room.state.by && room.state.by !== client.id) {
+        const since = typeof m.since === 'number' && Number.isFinite(m.since) ? m.since : 0;
+        if (!(since > (lastAction.get(room) || 0) && since <= Date.now() + 2000)) return;
+        lastAction.set(room, since);
+      }
       room.state = {
         ...room.state,
         paused: !!m.paused,
@@ -364,7 +376,7 @@ function handle(client, raw) {
       };
       if (m.rel) room.state.rel = true;
       else delete room.state.rel;
-      broadcast(room, { t: 'tick', ...room.state, from: client.id, cs: room.seq || 0 }, client);
+      broadcast(room, { t: 'tick', ...room.state, from: client.id, cs: room.seq || 0, since: lastAction.get(room) || 0 }, client);
       return;
     }
 
@@ -422,7 +434,7 @@ function handle(client, raw) {
     // İzleyenin oda durumuna göre farkı (sn): paneldeki "Senkron" yazısı gerçeğe dayansın
     case 'drift': {
       const err = typeof m.err === 'number' && Number.isFinite(m.err) && Math.abs(m.err) < 86400 ? Math.round(m.err * 100) / 100 : null;
-      broadcast(room, { t: 'drift', err, from: client.id }, client);
+      broadcast(room, { t: 'drift', err, from: client.id, cs: room.seq || 0 }, client);
       return;
     }
 
@@ -435,7 +447,8 @@ function handle(client, raw) {
     // Biri yükleniyor (buffer): diğerleri onu bekler
     case 'buffer': {
       const on = !!m.on;
-      if (client.buffering === on) return;
+      // again: istemcinin tekrarı (ilk mesaj kaybolmuş olabilir), aynı durum da iletilir
+      if (client.buffering === on && !m.again) return;
       client.buffering = on;
       broadcast(room, { t: 'buffer', on, member: memberInfo(client) }, client);
       return;
@@ -445,6 +458,7 @@ function handle(client, raw) {
     // anında oynatmaya başlar.
     case 'countdown': {
       const at = Date.now() + COUNTDOWN_MS;
+      lastAction.set(room, Date.now());
       const time = cleanNum(m.time);
       room.state = { paused: false, time, at, url: client.url, by: client.id };
       if (m.rel) room.state.rel = true;
@@ -643,10 +657,10 @@ async function startRelay(code, brokerUrls) {
   }
   for (const url of brokerUrls) connect(url);
 
-  // 45 sn'dir ses vermeyen istemci gitmiş sayılır (istemciler 15 sn'de bir ping atar)
+  // 30 sn'dir ses vermeyen istemci gitmiş sayılır (istemciler 6 sn'de bir ping atar)
   setInterval(() => {
     const now = Date.now();
-    for (const [cid, p] of peers) if (now - p.lastSeen > 45000) drop(cid);
+    for (const [cid, p] of peers) if (now - p.lastSeen > 30000) drop(cid);
   }, 10000).unref();
 }
 
