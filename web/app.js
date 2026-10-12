@@ -178,6 +178,42 @@
     fill();
     return h('div', { class: 'memes', role: 'group', 'aria-label': 'Kedi çıkartmaları' }, search, grid);
   }
+  // Çıkartma sayfası: 🐱'e basınca paneli komple kaplar (büyük ızgara + arama).
+  // Gönderince açık kalır (art arda atılabilsin); ✕, aşağı kaydırma ya da geri ile kapanır.
+  let sheet = null;
+  function stickerSheet() {
+    if (sheet) return sheet;
+    sheet = h('div', { class: 'stickersheet', role: 'dialog', 'aria-label': 'Çıkartmalar', hidden: true },
+      h('div', { class: 'shead' },
+        h('span', { class: 'sgrab', 'aria-hidden': 'true' }),
+        h('b', null, '🐱 Çıkartmalar'),
+        h('button', { type: 'button', class: 'btn icon quiet sclose', title: 'Kapat', 'aria-label': 'Çıkartmaları kapat', onclick: () => closeStickers() }, icon('close'))),
+      memeStrip());
+    document.body.append(sheet);
+    swipe(sheet, { axis: '+y', done: () => closeStickers(), skip: (t) => !!t.closest('.memegrid, input, button') });
+    return sheet;
+  }
+  function openStickers() {
+    const s = stickerSheet();
+    // Yüzen hap / yazma çubuğu küçük: önce paneli aç ki sayfa sığsın (video yanda oynamaya devam eder)
+    if (ENV === 'app' && ui.playerOpen && (ui.layout === 'float' || ui.layout === 'type')) {
+      chat.els.input.blur();
+      native.call('setPanel', 'open');
+    }
+    s.hidden = false;
+    s.openedAt = Date.now();
+  }
+  function closeStickers() {
+    if (!sheet || sheet.hidden) return false;
+    sheet.hidden = true;
+    const q = sheet.querySelector('.memesearch');
+    if (q.value) {
+      q.value = '';
+      q.dispatchEvent(new Event('input'));
+    }
+    q.blur();
+    return true;
+  }
 
 
   // ---------------------------------------------------------------- durum
@@ -209,15 +245,9 @@
     const node = $('chatTpl').content.firstElementChild.cloneNode(true);
     const q = (s) => node.querySelector(`[data-${s}]`);
     const els = { people: q('people'), msgs: q('msgs'), typing: q('typing'), reacts: q('reacts'), form: q('form'), input: q('input') };
-    // 🐱: emoji sırası ile kedi şeridi arasında geçiş
-    const cats = memeStrip();
-    cats.hidden = true;
-    els.reacts.after(cats);
+    // 🐱: tam sayfa çıkartma seçici
     els.reacts.append(
-      h('button', { type: 'button', class: 'catbtn', title: 'Kedi tepkileri', 'aria-label': 'Kedi tepkileri', onclick: () => {
-        cats.hidden = !cats.hidden;
-        node.classList.toggle('cats', !cats.hidden);
-      } }, '🐱')
+      h('button', { type: 'button', class: 'catbtn', title: 'Çıkartmalar', 'aria-label': 'Çıkartmalar', onclick: () => openStickers() }, '🐱')
     );
     for (const e of REACTIONS) {
       els.reacts.append(
@@ -974,6 +1004,8 @@
     if (ui.view === 'watch' && !ui.playerOpen && ENV === 'app') ui.view = 'lobby';
 
     document.body.className = ui.view === 'watch' ? ui.layout : '';
+    // Panel küçülünce (hap / yazma çubuğu) çıkartma sayfası da kapanır
+    if (sheet && !sheet.hidden && ui.view === 'watch' && /^(float|type)$/.test(ui.layout) && Date.now() - sheet.openedAt > 1500) closeStickers();
     const watch = ui.view === 'watch';
     const float = watch && ui.layout === 'float';
     const typing = watch && ui.layout === 'type';
@@ -1453,13 +1485,8 @@
     native.call('setPanel', 'type');
   });
   $('fPanel').addEventListener('click', () => native.call('setPanel', 'open'));
-  // Haptaki 🐱: kedi şeridini aç/kapat (gönderince kapanır)
-  $('fMemes').append(memeStrip());
-  $('fMemes').addEventListener('click', (e) => e.target.closest('.meme') && setTimeout(() => (($('fMemes').hidden = true), reportFloatSize()), 150));
-  $('fCats').addEventListener('click', () => {
-    $('fMemes').hidden = !$('fMemes').hidden;
-    reportFloatSize();
-  });
+  // Haptaki 🐱: paneli açıp çıkartma sayfasını gösterir
+  $('fCats').addEventListener('click', () => openStickers());
   $('fPlay').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'toggle' }));
   $('fBack').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'seekBy', delta: -10 }));
   $('fFwd').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'seekBy', delta: 10 }));
@@ -1544,6 +1571,7 @@
     },
     // Geri: sol üstteki düğme ya da telefonun geri hareketi. Bölümden kazara çıkılmasın.
     onBack() {
+      if (closeStickers()) return;
       if (!ui.playerOpen) return;
       // Yazma çubuğu açıksa geri tuşu yalnızca onu kapatır
       if (ui.layout === 'type') {

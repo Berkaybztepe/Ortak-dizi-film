@@ -630,3 +630,25 @@ body.bottom .grab::after { width: 52px; height: 5px; margin-top: 7px; background
 .fmemes { width: 340px; }
 .fmemes .memes { padding: 10px; }
 .fmemes .memegrid { max-height: 250px; }
+/* Tam sayfa çıkartma seçici: paneli komple kaplar, büyük kaydırılabilir ızgara */
+.stickersheet { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--bg, #0f0f11);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); animation: sheetUp .18s ease-out; }
+.stickersheet[hidden] { display: none; }
+.stickersheet.dragging { animation: none; }
+.stickersheet.settle { transition: transform .2s, opacity .2s; }
+@keyframes sheetUp { from { transform: translateY(24px); opacity: 0; } }
+.stickersheet .shead { position: relative; display: flex; align-items: center; gap: 8px; padding: 14px 10px 4px 16px; flex: none; touch-action: none; }
+.stickersheet .shead b { flex: 1; font: 800 16px/1.2 var(--sans); color: var(--text); }
+.stickersheet .sgrab { position: absolute; left: 50%; top: 5px; width: 40px; height: 4px; margin-left: -20px; border-radius: 4px; background: rgba(255, 255, 255, .22); }
+.stickersheet .sclose { width: 40px; min-height: 40px; }
+.stickersheet .memes { flex: 1; min-height: 0; padding: 4px 12px 0; gap: 10px; }
+.stickersheet .memesearch { min-height: 42px; font-size: 15px; flex: none; }
+.stickersheet .memegrid { flex: 1; max-height: none !important; min-height: 0; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)) !important;
+  gap: 14px 10px; padding: 4px 2px calc(16px + env(safe-area-inset-bottom)); align-content: start; }
+.stickersheet .meme { font-size: 11px; }
+.stickersheet .meme img { width: 100% !important; height: auto !important; aspect-ratio: 1; max-width: 120px; border-radius: 18px !important; }
+.stickersheet .meme span { display: block !important; max-width: 100%; }
+@media (max-width: 380px), (max-height: 420px) {
+  .stickersheet .memegrid { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)) !important; gap: 10px 8px; }
+  .stickersheet .shead { padding-top: 10px; }
+}
