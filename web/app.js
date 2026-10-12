@@ -287,14 +287,31 @@
       if (Date.now() - (ui.lastMeme || 0) < 700) return;
       ui.lastMeme = Date.now();
       client.send({ t: 'react', emoji });
-      if (ui.playerOpen) overlay({ type: 'meme', id: meme.f, img: !!meme.img, name: 'Sen' });
-      else toast(`🐱 ${meme.ad} gönderildi`);
+      if (ui.playerOpen && ENV === 'app') overlay({ type: 'meme', id: meme.f, img: !!meme.img, name: 'Sen' });
+      else lobbyMeme(meme, 'Sen');
       return;
     }
     if (ui.playerOpen) {
       native.call('toPlayer', { t: 'cmd', cmd: 'react', emoji });
       overlay({ type: 'react', emoji, name: 'Sen' });
     } else client.send({ t: 'react', emoji });
+  }
+
+  // Ana ekrandayken (video yokken) gelen/giden çıkartma: sol üstten kayan küçük hareketli kart
+  function lobbyMeme(meme, name) {
+    document.querySelector('.lmeme')?.remove();
+    const media = meme.img
+      ? h('img', { src: `memes/${meme.f}.jpg`, alt: '' })
+      : h('video', { src: `memes/${meme.f}.mp4`, autoplay: true, muted: true, loop: true, playsinline: true });
+    if (media.tagName === 'VIDEO') {
+      media.muted = true;
+      media.play?.().catch(() => {});
+    }
+    const card = h('div', { class: 'lmeme', role: 'status' }, media, h('span', null, h('b', null, name), ' · ', meme.ad));
+    card.addEventListener('click', () => card.remove());
+    document.body.append(card);
+    setTimeout(() => card.classList.add('out'), 4200);
+    setTimeout(() => card.remove(), 4600);
   }
 
   function colorOf(id) {
@@ -516,7 +533,7 @@
         const meme = memeOf(m.emoji);
         if (meme) {
           if (ui.playerOpen && ENV === 'app') overlay({ type: 'meme', id: meme.f, img: !!meme.img, name: m.name });
-          else toast([h('b', null, m.name), ` 🐱 ${meme.ad} gönderdi`]);
+          else lobbyMeme(meme, m.name);
         } else overlay({ type: 'react', emoji: /^kedi:/.test(m.emoji) ? '🐱' : m.emoji, name: m.name });
         break;
       }
@@ -1024,7 +1041,8 @@
     // Sohbeti doğru yere taşı
     const slot = watch ? $('watchChatSlot') : $('lobbySide');
     if (chat.node.parentNode !== slot) slot.replaceChildren(chat.node);
-    chat.els.reacts.hidden = !(watch || ENV === 'web' || ENV === 'demo');
+    // Emoji + 🐱 sırası: izlerken ve odadayken ana ekranda da görünür
+    chat.els.reacts.hidden = !(watch || connected || ENV === 'web' || ENV === 'demo');
 
     $('vLobby').dataset.tab = ui.tab;
     for (const b of $('tabs').querySelectorAll('button')) b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));

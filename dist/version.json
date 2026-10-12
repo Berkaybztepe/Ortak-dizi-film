@@ -1,7 +1,7 @@
 {
-  "versionCode": 15,
-  "versionName": "2.7.4",
+  "versionCode": 16,
+  "versionName": "2.7.5",
   "apk": "dist/OrtakIzle.apk",
-  "sha256": "2ef9abeb80aa429bcf52a1117d78bd007245bcd662c1f350b7e36c87fd8f1c09",
-  "notes": "WARP/VPN ile de bağlanır (443 portu)"
+  "sha256": "8513529cfd6f97094c40403337c8c0476c702f8c2ebda10d32fff744fdd96cca",
+  "notes": "Ana ekranda da emoji ve kedi çıkartmaları; WARP/VPN ile bağlantı"
 }
