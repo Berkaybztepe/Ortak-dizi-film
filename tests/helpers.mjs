@@ -57,6 +57,8 @@ window.__resist = 0;
 //                  oynatıcının ilerleme çubuğunda (role=slider, aria-valuenow) yazar
 //   ?unreliable=1: video süresi sonsuz görünür ve çubuk yok (gerçek dakika hiç okunamaz)
 const q = new URLSearchParams(location.search);
+// ?autoplay=1: site sayfa açılınca videoyu kendiliğinden oynatır (kullanıcı dokunmadan)
+if (q.has('autoplay')) v.addEventListener('loadeddata', () => v.play().catch(() => {}), { once: true });
 if (q.has('offset') || q.has('unreliable')) {
   Object.defineProperty(v, 'duration', { get: () => Infinity });
 }

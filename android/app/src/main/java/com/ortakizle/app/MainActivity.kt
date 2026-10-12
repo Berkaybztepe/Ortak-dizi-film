@@ -371,8 +371,10 @@ class MainActivity : ComponentActivity() {
         fun checkUpdate() {
             Thread {
                 val info = Updater.check()
-                lastUpdate = info
-                js("OI.onUpdate(${info?.toJson() ?: "null"})")
+                val failed = Updater.lastCheckFailed
+                // Ulaşılamadıysa eldeki bilgiyi silme (indirme sürerken kart kaybolmasın)
+                if (!failed) lastUpdate = info
+                js("OI.onUpdate(${info?.toJson() ?: "null"}, $failed)")
             }.start()
         }
 
@@ -498,8 +500,21 @@ class MainActivity : ComponentActivity() {
         }
 
         wv.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                handleSpecialUrl(view, request.url)
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                if (handleSpecialUrl(view, request.url)) return true
+                // Oynatıcı içinde başka bir siteye geçildi (ör. YouTube'dan Disney+'a): masaüstü/mobil
+                // kimliği o siteye göre değiştir ve sayfayı yeni kimlikle aç
+                if (request.isForMainFrame && request.method == "GET" && !request.isRedirect) {
+                    val want = wantsDesktop(request.url.toString())
+                    if (want != playerDesktop) {
+                        playerDesktop = want
+                        applyUserAgent(view)
+                        view.loadUrl(request.url.toString())
+                        return true
+                    }
+                }
+                return false
+            }
 
             override fun onPageFinished(view: WebView, url: String?) {
                 // Eski WebView'larda belge başı betiği yoksa sayfa yüklenince ekle

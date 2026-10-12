@@ -198,7 +198,7 @@ const lastAction = new WeakMap();
 
 function hostOf(u) {
   try {
-    return new URL(u).hostname.replace(/^www\./, '');
+    return new URL(u).hostname.replace(/^(www|m)\./, '');
   } catch {
     return '';
   }
@@ -287,6 +287,20 @@ function handle(client, raw) {
     client.buffering = false;
     client.watching = false;
     client.room = getRoom(roomName);
+    // Bağlantısı kopup yeniden bağlanan kişinin eski (ölü) bağlantısını sessizce kaldır: daha sonra
+    // zaman aşımıyla "odadan çıktı" sayılıp videoyu durdurmasın
+    const prev = cleanStr(m.prev, 20);
+    for (const old of client.room.clients) {
+      if (prev && old.id === prev && old !== client && old.name === client.name) {
+        client.room.clients.delete(old);
+        old.room = null;
+        if (old.admin) client.local = client.local || old.local;
+        broadcast(client.room, { t: 'member-leave', member: memberInfo(old), replaced: true });
+        try {
+          old.ws.close(1000);
+        } catch {}
+      }
+    }
     // Yönetici: odayı açan cihaz (sunucuya bu cihazın içinden bağlanan ilk kişi)
     client.admin = !!client.local && ![...client.room.clients].some((c) => c.admin);
     client.room.clients.add(client);
@@ -297,6 +311,7 @@ function handle(client, raw) {
       server: SERVER_NAME,
       members: [...client.room.clients].map(memberInfo),
       state: client.room.state,
+      lastAction: lastAction.get(client.room) || 0,
       lock: client.room.lock,
       history: client.room.history,
       now: Date.now(),
@@ -353,6 +368,9 @@ function handle(client, raw) {
       // delta: sarma miktarı (sn), güvenli modda karşı taraf aynı miktarda sarar
       if (action === 'seek' && typeof m.delta === 'number' && Number.isFinite(m.delta) && Math.abs(m.delta) <= 86400) msg.delta = m.delta;
       broadcast(room, msg, client);
+      // Gönderene de sonucu bildir: iki kişi aynı anda bir şeye bastıysa sunucunun sırası geçerli
+      // olsun (son işlenen kumandayı alır); herkes kumandanın kimde olduğunda anlaşır
+      client.ws.send({ t: 'state', state: room.state });
       return;
     }
 
@@ -361,6 +379,8 @@ function handle(client, raw) {
       // Sadece son kumanda eden kişinin tick'i durumu belirler; aksi halde iki
       // taraf birbirini sonsuza kadar düzeltmeye çalışır. İstisna: gönderenin son hareketi (since)
       // odadaki son hareketten yeniyse o hareketin mesajı yolda kaybolmuştur; kumanda ona geçer.
+      // Bölüm sayfasında olmayan (çıkmış) birinin bildirimi odayı yönetmez
+      if (!client.watching) return;
       if (room.state.by && room.state.by !== client.id) {
         const since = typeof m.since === 'number' && Number.isFinite(m.since) ? m.since : 0;
         if (!(since > (lastAction.get(room) || 0) && since <= Date.now() + 2000)) return;
@@ -493,8 +513,10 @@ function leave(client) {
   log(`[${room.name}] - ${client.name}`);
   if (room.clients.size === 0) {
     // Boş odayı bir süre sonra temizle (yenileme sırasında geçmiş kaybolmasın)
+    room.emptySince = Date.now();
     setTimeout(() => {
-      if (room.clients.size === 0 && rooms.get(room.name) === room) rooms.delete(room.name);
+      // Bu arada biri girip çıktıysa sayaç yeniden başlamıştır
+      if (room.clients.size === 0 && rooms.get(room.name) === room && Date.now() - room.emptySince >= 30 * 60 * 1000 - 1000) rooms.delete(room.name);
     }, 30 * 60 * 1000).unref();
   }
 }
@@ -581,9 +603,8 @@ async function startRelay(code, brokerUrls) {
   const { topic, key } = await R.relayKeys(code);
   const peers = new Map(); // cid -> { client, link, lastSeen, tx }
 
-  function publish(peer, obj) {
+  function publish(peer, obj, link = peer.link) {
     const text = typeof obj === 'string' ? obj : JSON.stringify(obj);
-    const link = peer.link;
     peer.tx = peer.tx.then(async () => {
       if (!link.mqtt.closed) link.mqtt.publish(`${topic}/down/${peer.cid}`, await R.seal(key, text));
     });
@@ -612,9 +633,11 @@ async function startRelay(code, brokerUrls) {
         peer.client = client;
         peers.set(cid, peer);
       }
-      peer.link = link;
+      // İstemci "merhaba"yı tüm aracılardan yollar ve ilk cevap verenle devam eder: veri gelmeye
+      // başladıktan sonra geç gelen bir "merhaba" cevap yolunu başka aracıya çevirmesin
+      if (!peer.hasData) peer.link = link;
       peer.lastSeen = Date.now();
-      publish(peer, { _: 'hi', name: SERVER_NAME });
+      publish(peer, { _: 'hi', name: SERVER_NAME }, link);
       return;
     }
     if (ctl && ctl._ === 'bye') return drop(cid);
@@ -625,6 +648,7 @@ async function startRelay(code, brokerUrls) {
       return;
     }
     peer.link = link;
+    peer.hasData = true;
     peer.lastSeen = Date.now();
     handle(peer.client, text);
   }

@@ -95,7 +95,9 @@ function client(port) {
   await a.next((m) => m.t === 'chat' && m.cid === cid);
   a.send({ t: 'chat', text: 'tekrar', cid });
   const again = await b.next((m) => m.t === 'chat' && m.cid === cid);
-  assert.strictEqual(again.at, (await a.next((m) => m.t === 'chat' && m.cid === cid)).at); // aynı mesaj, yeni değil
+  const first = await a.next((m) => m.t === 'chat' && m.cid === cid);
+  assert.strictEqual(again.at, first.at); // aynı mesaj, yeni değil
+  assert.strictEqual(again.seq, first.seq); // aynı sıra numarası: çoğaltılmadı
 
   // Hangi sayfada olduğu
   a.send({ t: 'nav', url: 'https://www.disneyplus.com/play/abc', title: 'Loki', platform: 'Disney+', watching: true });
@@ -131,6 +133,10 @@ function client(port) {
   // Kumandayı değiştiren hareket yolda kaybolduysa: daha yeni "since" taşıyan tick kabul edilir
   a.send({ t: 'sync', action: 'pause', time: 70 });
   await b.next((m) => m.t === 'sync' && m.time === 70);
+  b.send({ t: 'tick', time: 9, paused: true, since: Date.now() }); // bölüm sayfasında değil: reddedilir
+  await a.none((m) => m.t === 'tick' && m.time === 9);
+  b.send({ t: 'nav', url: 'https://www.disneyplus.com/play/abc', title: 'Loki', platform: 'Disney+', watching: true });
+  await a.next((m) => m.t === 'nav' && m.member.name === 'Kardeş' && m.watching);
   b.send({ t: 'tick', time: 11, paused: true, since: Date.now() - 60000 }); // eski: reddedilir
   await a.none((m) => m.t === 'tick' && m.time === 11);
   b.send({ t: 'tick', time: 12, paused: true, since: Date.now() }); // yeni hareket: kumanda B'ye geçer
@@ -239,6 +245,7 @@ function client(port) {
   assert.strictEqual((await b.next((m) => m.t === 'member-leave')).member.name, 'Berkay');
   const lf = await b.next((m) => m.t === 'sync' && m.reason);
   assert.deepStrictEqual([lf.reason, lf.paused, lf.by], ['left', true, null]);
+  b.send({ t: 'nav', url: 'https://www.disneyplus.com/play/abc', title: 'Loki', platform: 'Disney+', watching: true });
   b.send({ t: 'tick', time: 99, paused: false });
 
   // Sonradan katılan güncel durumu alır
@@ -271,6 +278,24 @@ function client(port) {
   const r2 = await c.next((m) => m.t === 'chat' && m.seq === long.seq);
   assert.strictEqual(r2.text, long.text);
   assert.ok(r1.seq < r2.seq);
+
+  // Kumanda hareketinin sonucu gönderene de bildirilir (aynı anda basılınca sunucunun sırası geçerli)
+  b.send({ t: 'sync', action: 'play', time: 5 });
+  const ack = await b.next((m) => m.t === 'state');
+  assert.deepStrictEqual([ack.state.by, ack.state.paused, ack.state.time], [wb.you.id, false, 5]);
+
+  // Bağlantısı kopup yeniden bağlanan kişinin eski bağlantısı sessizce kalkar: video durmaz,
+  // "odadan ayrıldı" yazılmaz
+  const d = client(port);
+  await d.ready;
+  d.send({ t: 'join', room: 'salon', name: 'Kardeş', password: 'gizli', prev: wb.you.id });
+  const wd = await d.next((m) => m.t === 'welcome');
+  assert.ok(wd.lastAction > 0);
+  assert.ok(!wd.members.some((x) => x.id === wb.you.id));
+  const rep = await c.next((m) => m.t === 'member-leave');
+  assert.deepStrictEqual([rep.member.id, rep.replaced], [wb.you.id, true]);
+  await c.none((m) => (m.t === 'sync' && m.reason) || (m.t === 'chat' && /ayrıldı/.test(m.text || '')), RELAY_CODE ? 1500 : 800);
+  d.close();
 
   b.close();
   c.close();

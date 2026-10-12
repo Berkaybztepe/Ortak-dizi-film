@@ -40,7 +40,7 @@
     try {
       const x = new URL(a);
       const y = new URL(b);
-      if (x.hostname.replace(/^www\./, '') !== y.hostname.replace(/^www\./, '')) return false;
+      if (x.hostname.replace(/^(www|m)\./, '') !== y.hostname.replace(/^(www|m)\./, '')) return false;
       if (/youtube/.test(x.hostname)) return x.searchParams.get('v') === y.searchParams.get('v');
       // Dil öneki farklı olabilir (/tr-tr/play/abc ile /play/abc)
       const norm = (p) => p.replace(/\/$/, '').replace(/^\/[a-z]{2}(-[a-z]{2})?(?=\/)/i, '');
@@ -497,7 +497,7 @@
       if (!url) return true;
       if (sameContent(url, location.href) || !isWatchUrl(url)) return true;
       try {
-        const host = (u) => new URL(u).hostname.replace(/^www\./, '');
+        const host = (u) => new URL(u).hostname.replace(/^(www|m)\./, '');
         return host(url) === host(location.href) && watchingNow();
       } catch {
         return false;
@@ -507,6 +507,11 @@
     // Uzaktan gelen hareket bu sayfaya uygulanmalı mı?
     function applyable(url) {
       return !!video && relatedContent(url);
+    }
+
+    // Oda bu bölümde oynuyor mu (bir kumanda durumu var ve "oynuyor")?
+    function roomPlaying() {
+      return !!(connected() && roomState && roomState.by && !roomState.paused && applyable(roomState.url));
     }
 
     // Odada bizimle aynı bölümü izleyen başka biri var mı?
@@ -531,6 +536,7 @@
       if (video === v) return;
       if (video) for (const e of EVENTS) video.removeEventListener(e, onVideoEvent);
       if (video && rateSet !== null) restoreRate();
+      clearStart();
       video = v;
       rateSet = null;
       rateFights = 0;
@@ -585,9 +591,20 @@
       if ((t === 'play' || t === 'playing' || t === 'pause') && expectedPlayState) return; // kendi hareketimizin yankısı
       // Kullanıcı oynattı ve aynı bölümde başkası da var: herkes aynı anda başlasın diye kısa bir
       // süre sonrasına planla (oynatıcıyı hemen durdurup o anda birlikte başlatırız)
+      if (t === 'play' && !video.paused && !pending && !holding && roomPlaying()) {
+        // Oda zaten bu bölümde oynuyor (ör. site açılışta kendiliğinden oynattı ya da "dokun"
+        // düğmesine basıldı): kimseyi kendi yerimize çekmeyelim, odaya katılalım
+        if (roomState.by !== me?.id) applyState(roomState, true);
+        return;
+      }
       if (t === 'play' && !video.paused && !pending && !holding && othersHere()) {
         if (resisting() && applied.paused) {
           reassert(); // oynatıcı az önceki durdurmayı geri aldı; kullanıcı değil
+          return;
+        }
+        // Kimse dokunmadan gelen oynatma (site kendiliğinden oynattı) oda durmuşken: odaya uy, durdur
+        if (Date.now() - lastInput > 1500 && roomState && roomState.by && roomState.paused && applyable(roomState.url)) {
+          applyState(roomState, true);
           return;
         }
         // Sitenin play() isteği tamamlansın ("playing"), sonra durdurup planla: aksi halde sitenin
@@ -648,6 +665,12 @@
         reassert();
         return;
       }
+      if (holding && !paused) {
+        // Kullanıcı beklemeyi kendisi bozdu: bu yükleme için bir daha bekletme
+        holding = false;
+        holdExpired = true;
+        stage.note(null);
+      }
       if (roomState && roomState.paused === paused && applyable(roomState.url)) {
         if (!p.seek) return; // yankı
         if (!rel && !roomState.rel && Math.abs(time - expectedTime(roomState)) < 0.5) return;
@@ -657,7 +680,7 @@
           return;
         }
       }
-      if (holding && !paused) holding = false; // kullanıcı beklemeyi kendisi bozdu
+      // (kullanıcının beklemeyi bozması aşağıda, yankı denetiminden önce ele alınır)
       // Güvenli modda, durmuşken yapılan sarma paylaşılmaz: ikiniz de durdurup kendi videonuzu
       // aynı sahneye getirebilin diye (dakika bilinmediği için başka hizalama yolu yok)
       if (rel && paused && p.seek) {
@@ -756,6 +779,8 @@
 
     const tapToPlay = () =>
       stage.tap('Oynatmak için dokun', () => {
+        if (!video) return;
+        lastInput = 0; // bu dokunuş bizim düğmemize: kullanıcının oynatma hareketi sayılmasın
         suppressUntil = Date.now() + 600;
         const ms = roomState && measure(roomState);
         if (ms && !roomState.paused && Math.abs(ms.want - ms.mine) > 1) progSeek(toVideo(ms, ms.want + seekLead));
@@ -829,6 +854,9 @@
             suppressUntil = Date.now() + 600;
             progPause();
           }
+          // Kumanda bizdeyse beklediğimizi duyur: diğerleri bizim hâlâ oynadığımızı sanıp ileri
+          // kaçmasın (kendi oda durumumuz "oynuyor" kalır, yükleme bitince devam ederiz)
+          if (connected() && me && roomState.by === me.id) sendTick(true, false);
         }
       } else {
         stage.note(null);
@@ -837,7 +865,9 @@
           // Kaldığımız yerden devam; ufak fark ince ayarla kapanır
           if (video && roomState && !roomState.paused && video.paused) {
             suppressUntil = Date.now() + 600;
-            progPlay(() => stage.tap('Devam etmek için dokun', () => progPlay(() => {})));
+            progPlay(() => stage.tap('Devam etmek için dokun', () => video && ((lastInput = 0), progPlay(() => {}))));
+            // Kumanda bizdeyse devam ettiğimizi hemen duyur
+            if (connected() && me && roomState.by === me.id) setTimeout(() => connected() && video && !video.paused && sendTick(false, true), 300);
           }
         }
       }
@@ -863,7 +893,8 @@
       restoreRate();
       starting = { at, count: showCount };
       const step = () => {
-        if (!starting || !video) return;
+        if (!starting) return;
+        if (!video) return clearStart(); // video gitti: bekleme takılı kalmasın
         const left = starting.at - serverNow();
         if (starting.count) stage.count(left > 0 ? Math.ceil(left / 1000) : null);
         if (left > 6) {
@@ -995,11 +1026,13 @@
 
     // (Yeniden) bağlanınca: durumumuzu yeniden bildir; bağlantı koptuğu sırada son hareketi biz
     // yaptıysak (gitmemiş olabilir) odanın eski durumuna dönme, kendi durumumuzu yeniden duyur
-    function joined() {
+    function joined(roomLastAction) {
       lastUrl = '';
       bufferingSent = !bufferingSent;
       setBuffering(!bufferingSent);
-      if (video && lastLocal > lastRemote && Date.now() - lastLocal < 120000 && !starting) {
+      // Biz yokken odada bizimkinden yeni bir hareket olduysa (ör. kardeş oynattı) onu ezmeyelim
+      const newerInRoom = typeof roomLastAction === 'number' && roomLastAction > leadSince + 50;
+      if (video && lastLocal > lastRemote && Date.now() - lastLocal < 120000 && !starting && !newerInRoom) {
         const { time, rel } = position();
         const msg = { t: 'sync', action: video.paused ? 'pause' : 'play', time, paused: video.paused, at: serverNow() };
         if (rel) msg.rel = true;
@@ -1024,7 +1057,7 @@
           me = m.room?.me || null;
           members = m.room?.members || [];
           roomState = m.room?.state || null;
-          if (connected() && !was) joined();
+          if (connected() && !was) joined(m.room?.lastAction);
           updateHold();
           break;
         }
@@ -1037,7 +1070,7 @@
           me = m.you;
           members = m.members || [];
           roomState = m.state || null;
-          joined();
+          joined(m.lastAction);
           break;
         case 'member-join':
           members = members.filter((x) => x.id !== m.member.id).concat(m.member);
@@ -1151,8 +1184,12 @@
           return;
         }
         if (video.paused) {
-          if (connected() && othersHere() && !holding) startTogether();
-          else playVideo(() => stage.tap('Oynatmak için dokun', () => video.play()));
+          // Oda zaten oynuyorsa (bizimki durmuş kalmış): odaya katıl, kimseyi geri çekme
+          if (roomPlaying() && roomState.by !== me?.id) {
+            lastPausedSeek = null;
+            applyState(roomState, true);
+          } else if (connected() && othersHere() && !holding) startTogether();
+          else playVideo(() => stage.tap('Oynatmak için dokun', () => video && video.play()));
         } else video.pause();
       } else if (cmd === 'pauseAll') {
         // Bölümden çıkılıyor: hemen herkeste durdur (sayfa kapanmadan önce)
@@ -1275,14 +1312,18 @@
       if (now - lastTickAt < every - 150) return;
       lastTickAt = now;
       lastTickPaused = paused;
+      sendTick(paused, true);
+    }, 250);
+
+    // since: son kendi hareketimizin anı. O hareketin mesajı yolda kaybolduysa sunucu kumandayı
+    // hâlâ diğerinde sanır; daha yeni "since" görünce bizimkini kabul eder.
+    function sendTick(paused, remember) {
       const { time, rel } = position();
-      // since: son kendi hareketimizin anı. O hareketin mesajı yolda kaybolduysa sunucu kumandayı
-      // hâlâ diğerinde sanır; daha yeni "since" görünce bizimkini kabul eder.
       const tick = { t: 'tick', time, paused, at: serverNow(), since: leadSince };
       if (rel) tick.rel = true;
       post(tick);
-      roomState = { ...roomState, paused, time, at: tick.at, rel };
-    }, 250);
+      if (remember) roomState = { ...roomState, paused, time, at: tick.at, rel };
+    }
 
     addEventListener('pagehide', () => setBuffering(false));
 

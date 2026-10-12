@@ -309,11 +309,17 @@ class RoomServer(
         val client = Client(newId())
         // Bu cihazın içinden bağlanan (odayı açan) kişi yönetici olabilir
         client.local = sock.inetAddress?.isLoopbackAddress == true
-        val conn = WsConn(sock, out) { synchronized(lock) { leave(client) } }
+        val conn = WsConn(sock, out) {
+            synchronized(lock) {
+                client.gone = true
+                leave(client)
+            }
+        }
         client.peer = conn
         wsConns.add(conn)
         conn.startWriter()
-        conn.readLoop(input) { text -> synchronized(lock) { handle(client, text) } }
+        // Kapanan bağlantının geç gelen mesajı (ör. join) onu odaya geri sokmasın: kontrol kilit altında
+        conn.readLoop(input) { text -> synchronized(lock) { if (!client.gone) handle(client, text) } }
     }
 
     private fun newId(): String {
@@ -358,7 +364,7 @@ class RoomServer(
             override val id = client.id
             override fun receive(text: String) {
                 if (text.length > 1_000_000) return
-                synchronized(lock) { if (!closed) handle(client, text) }
+                synchronized(lock) { if (!closed && !client.gone) handle(client, text) }
             }
             override fun close() {
                 synchronized(lock) {
@@ -509,6 +515,7 @@ class RoomServer(
         var lock = true
         // Son kumanda hareketinin anı (sunucu saati): kaybolmuş hareketi tick'ten tanımak için
         var lastAction = 0L
+        var emptySince = 0L
     }
 
     private inner class Client(val id: String) {
@@ -524,6 +531,7 @@ class RoomServer(
         var watching = false
         var admin = false
         var local = false
+        var gone = false // bağlantı kapandı ya da yerine yenisi geldi
     }
 
     private fun memberInfo(c: Client): JsonObject = buildJsonObject {
@@ -546,10 +554,10 @@ class RoomServer(
         return Math.round(x)
     }
 
-    private fun hostOf(u: String?): String = try {
-        java.net.URI(u ?: "").host?.removePrefix("www.") ?: ""
-    } catch (_: Exception) {
-        ""
+    // Adresin sunucu adı (www./m. olmadan). URI ayrıştırıcısı bazı geçerli adreslerde hata verdiği için elle
+    private fun hostOf(u: String?): String {
+        val m = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/?#]*@)?([^:/?#]+)").find(u ?: "") ?: return ""
+        return m.groupValues[1].lowercase().removePrefix("www.").removePrefix("m.")
     }
 
     // İzleyen biri bölümden ya da odadan çıktı: oynuyorsa video herkeste dursun
@@ -652,6 +660,26 @@ class RoomServer(
             client.watching = false
             val room = getRoom(roomName)
             client.room = room
+            // Bağlantısı kopup yeniden bağlanan kişinin eski (ölü) bağlantısını sessizce kaldır: daha
+            // sonra zaman aşımıyla "odadan çıktı" sayılıp videoyu durdurmasın
+            val prev = cleanStr(m["prev"], 20)
+            if (prev.isNotEmpty()) {
+                for (old in room.clients.toList()) {
+                    if (old.id != prev || old === client || old.name != client.name) continue
+                    room.clients.remove(old)
+                    old.room = null
+                    old.gone = true
+                    if (old.admin) client.local = client.local || old.local
+                    broadcast(room, buildJsonObject {
+                        put("t", "member-leave")
+                        put("member", memberInfo(old))
+                        put("replaced", true)
+                    })
+                    val p = old.peer
+                    // Ağdan gelen eski bağlantıyı kapat (aracı üzerinden geleni Relay zaman aşımıyla temizler)
+                    if (p is WsConn) schedule(0) { p.close(1000) }
+                }
+            }
             // Yönetici: odayı açan cihaz (sunucuya bu cihazın içinden bağlanan ilk kişi)
             client.admin = client.local && room.clients.none { it.admin }
             room.clients.add(client)
@@ -662,6 +690,7 @@ class RoomServer(
                 put("server", name)
                 put("members", JsonArray(room.clients.map { memberInfo(it) }))
                 put("state", room.state.toJson())
+                put("lastAction", room.lastAction)
                 put("lock", room.lock)
                 put("history", JsonArray(room.history.toList()))
                 put("now", System.currentTimeMillis())
@@ -744,10 +773,17 @@ class RoomServer(
                     put("from", client.id)
                     put("name", client.name)
                 }, client)
+                // Gönderene de sonucu bildir: aynı anda basılınca sunucunun sırası geçerli olsun
+                client.peer.send(buildJsonObject {
+                    put("t", "state")
+                    put("state", room.state.toJson())
+                })
             }
 
             // Oynatırken düzenli konum bildirimi (kayma düzeltmesi için)
             "tick" -> {
+                // Bölüm sayfasında olmayan (çıkmış) birinin bildirimi odayı yönetmez
+                if (!client.watching) return
                 // Sadece son kumanda eden kişinin tick'i durumu belirler. İstisna: gönderenin son
                 // hareketi (since) odadaki son hareketten yeniyse o hareketin mesajı yolda kaybolmuştur
                 val by = room.state.by
@@ -908,9 +944,13 @@ class RoomServer(
         log("[${room.name}] - ${client.name}")
         if (room.clients.isEmpty()) {
             // Boş odayı bir süre sonra temizle (yenileme sırasında geçmiş kaybolmasın)
+            room.emptySince = System.currentTimeMillis()
             schedule(EMPTY_ROOM_TTL_MS) {
                 synchronized(lock) {
-                    if (room.clients.isEmpty() && rooms[room.name] === room) rooms.remove(room.name)
+                    // Bu arada biri girip çıktıysa sayaç yeniden başlamıştır
+                    if (room.clients.isEmpty() && rooms[room.name] === room &&
+                        System.currentTimeMillis() - room.emptySince >= EMPTY_ROOM_TTL_MS - 1000
+                    ) rooms.remove(room.name)
                 }
             }
         }

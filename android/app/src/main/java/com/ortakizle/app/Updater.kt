@@ -47,13 +47,20 @@ object Updater {
     }
 
     /** Yeni sürüm varsa bilgisini döndürür (ağ isteği: arka planda çağırın) */
+    /** Son denetimde hiçbir adrese ulaşılamadı mı (internet yok)? */
+    @Volatile var lastCheckFailed = false
+        private set
+
     fun check(): Info? {
         var best: Info? = null
+        var reached = false
         val bases = testBase?.let { listOf(it.trimEnd('/')) } ?: BRANCHES.map { "$RAW/$it" }
         for (base in bases) {
             try {
                 val c = get("$base/dist/version.json?t=${System.currentTimeMillis() / 60000}")
-                if (c.responseCode != 200) continue
+                val status = c.responseCode
+                reached = true
+                if (status != 200) continue
                 val j = JSONObject(c.inputStream.use { it.readBytes().toString(Charsets.UTF_8) })
                 val info = Info(
                     code = j.getInt("versionCode"),
@@ -67,6 +74,7 @@ object Updater {
                 Log.i(TAG, "Güncelleme denetimi ($base): ${e.message}")
             }
         }
+        lastCheckFailed = !reached
         return best?.takeIf { it.code > BuildConfig.VERSION_CODE }
     }
 
@@ -95,7 +103,7 @@ object Updater {
                             val p = (done * 100 / total).toInt()
                             if (p != last) {
                                 last = p
-                                progress(p)
+                                progress(minOf(p, 99)) // 100 = doğrulandı, kuruluma hazır
                             }
                         }
                     }
@@ -156,13 +164,15 @@ object Updater {
     }
 
     /** İzin verilip dönüldüyse kurulum ekranını açar */
-    fun resumeAfterPermission(activity: Activity): Boolean {
+    fun resumeAfterPermission(activity: Activity) {
         val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("izinBekleniyor", false) || !canInstall(activity)) return false
+        if (!prefs.getBoolean("izinBekleniyor", false) || !canInstall(activity)) return
         prefs.edit().remove("izinBekleniyor").apply()
-        if (pending == null) pending = restore(activity)
-        if (pending == null) return false
-        return install(activity) == null
+        // APK'yı çözümlemek ana iş parçacığını bekletmesin
+        Thread {
+            if (pending == null) pending = restore(activity)
+            if (pending != null) activity.runOnUiThread { if (!activity.isFinishing) install(activity) }
+        }.start()
     }
 
     // Önbellekte indirilmiş, doğrulanmış en yeni APK

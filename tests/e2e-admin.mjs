@@ -41,12 +41,9 @@ try {
     ? pass('Yöneticide "Bölümü sadece ben seçeyim" açık')
     : fail('Kilit ayarı yöneticide görünmüyor');
   (await B.ui.locator('#lockRow').isHidden()) ? pass('Diğer kişide kilit ayarı yok') : fail('Kilit ayarı B\'de görünüyor');
-  (await B.ui.locator('.pf[data-p="disney"]').getAttribute('class')).includes('off') ? pass('Kilitliyken B\'de platformlar kapalı') : fail('B\'nin platformları açık');
-  await B.ui.locator('.pf[data-p="disney"]').click();
-  await sleep(400);
-  !B.called('openPlayer').length && /seçiyor/.test(await B.ui.locator('#toasts').innerText())
-    ? pass('B bölüm açamadı, "Bölümü Berkay seçiyor" dedi')
-    : fail('Kilit B\'yi durdurmadı');
+  !(await B.ui.locator('.pf[data-p="disney"]').getAttribute('class')).includes('off')
+    ? pass('Yönetici bir şey izlemiyorken B platform açabilir (ör. siteye giriş için)')
+    : fail('B\'nin platformları gereksiz yere kapalı');
 
   // ---- Yönetici açınca B kendiliğinden geçer
   await A.ui.locator('.pf[data-p="disney"]').click();
@@ -58,6 +55,13 @@ try {
   await B.player.waitForFunction(() => window.v && v.readyState >= 2, null, { timeout: 10000 });
   await A.player.waitForFunction(() => window.v && v.readyState >= 2, null, { timeout: 10000 });
   await sleep(2500);
+  (await B.ui.evaluate(() => document.querySelector('.pf[data-p="disney"]').className)).includes('off') ? pass('Yönetici izlerken B\'de platformlar kapalı') : fail('B\'nin platformları açık');
+  const opened0 = B.called('openPlayer').length;
+  await B.ui.evaluate(() => document.querySelector('.pf[data-p="disney"]').click());
+  await sleep(400);
+  B.called('openPlayer').length === opened0 && /seçiyor/.test(await B.ui.locator('#toasts').innerText())
+    ? pass('B başka bölüm açamadı, "Bölümü Berkay seçiyor" dedi')
+    : fail('Kilit B\'yi durdurmadı');
   last(B.overlays('back'))?.show === false ? pass('B\'de geri düğmesi gizli') : fail('B geri düğmesi: ' + JSON.stringify(B.overlays('back')));
   last(A.overlays('back'))?.show !== false ? pass('Yöneticide geri düğmesi görünür') : fail('A geri düğmesi gizli');
   await B.ui.evaluate(() => OI.onBack());

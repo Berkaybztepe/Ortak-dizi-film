@@ -142,7 +142,8 @@ Aynı Wi-Fi'da odanın adresini herhangi bir tarayıcıda açarsan (`http://192.
 npm test                      # sunucu protokol testleri + ortak dosyaların güncelliği
 npm install && npm run test:e2e   # iki Chromium ile uçtan uca testler (ffmpeg gerekir):
                               # eklenti, uygulama, mesaj kaybı/inatçı oynatıcı, dakika okuma,
-                              # gecikmeli ağda hassasiyet (ms), yönetici/kilit/geri düğmesi
+                              # gecikmeli ağda hassasiyet (ms), yönetici/kilit/geri düğmesi,
+                              # keşif (sonradan katılma, aynı anda basma, bağlantı kopması…)
 node tools/make-version.mjs "notlar"   # APK'yı dist/'e koyduktan sonra: uygulama içi güncelleme dosyası
 node tools/sync-shared.mjs    # web/ değişince eklentideki kopyaları güncelle
 

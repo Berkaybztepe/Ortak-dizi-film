@@ -100,7 +100,11 @@ class MqttLink(
         val tls = uri.scheme == "ssl" || uri.scheme == "tls" || uri.scheme == "mqtts"
         val port = if (uri.port > 0) uri.port else if (tls) 8883 else 1883
         val sock: Socket = if (tls) {
-            val plain = Socket().apply { connect(InetSocketAddress(uri.host, port), 10_000) }
+            // El sıkışma takılırsa iş parçacığı sonsuza kadar beklemesin
+            val plain = Socket().apply {
+                connect(InetSocketAddress(uri.host, port), 10_000)
+                soTimeout = 15_000
+            }
             val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
             val ssl = factory.createSocket(plain, uri.host, port, true) as SSLSocket
             ssl.sslParameters = ssl.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
@@ -204,9 +208,9 @@ class MqttLink(
 
     fun ping() = try { send(0xC0, ByteArray(0)) } catch (_: IOException) { close() }
 
+    // Önce soketi kapat: yazma ölü ağda takılı kaldıysa kilidi beklemeyelim (aracı kopuşu zaten görür)
     fun close() {
         connected = false
-        try { if (out != null) send(0xE0, ByteArray(0)) } catch (_: Exception) {}
         try { socket?.close() } catch (_: Exception) {}
         out = null
     }
@@ -229,6 +233,7 @@ class Relay(
     private class Peer(val cid: String, val conn: RoomServer.VirtualConnection) {
         @Volatile var link: Link? = null
         @Volatile var lastSeen = System.currentTimeMillis()
+        @Volatile var hasData = false
     }
 
     // Her aracı için bir bağlantı ve tek yazıcı iş parçacığı (mesaj sırası korunur)
@@ -315,9 +320,11 @@ class Relay(
                     p = Peer(c, conn)
                     p
                 }
-                peer.link = l
+                // İstemci "merhaba"yı tüm aracılardan yollar, ilk cevap verenle devam eder: veri gelmeye
+                // başladıktan sonra geç gelen "merhaba" cevap yolunu kapanmış bir aracıya çevirmesin
+                if (!peer.hasData) peer.link = l
                 peer.lastSeen = System.currentTimeMillis()
-                send(peer, """{"_":"hi","name":${jsonString(server.serverName)}}""")
+                sendVia(l, peer.cid, """{"_":"hi","name":${jsonString(server.serverName)}}""")
             }
             "bye" -> peers.remove(cid)?.conn?.close()
             else -> {
@@ -334,6 +341,7 @@ class Relay(
                     return
                 }
                 peer.link = l
+                peer.hasData = true
                 peer.lastSeen = System.currentTimeMillis()
                 peer.conn.receive(text)
             }
@@ -341,13 +349,16 @@ class Relay(
     }
 
     private fun send(peer: Peer, text: String) {
-        val l = peer.link ?: return
+        sendVia(peer.link ?: return, peer.cid, text)
+    }
+
+    private fun sendVia(l: Link, cid: String, text: String) {
         try {
             l.writer.execute {
                 val m = l.mqtt ?: return@execute
                 if (!m.connected) return@execute
                 try {
-                    m.publish("${crypto.topic}/down/${peer.cid}", crypto.seal(text))
+                    m.publish("${crypto.topic}/down/$cid", crypto.seal(text))
                 } catch (_: IOException) {
                     m.close()
                 }

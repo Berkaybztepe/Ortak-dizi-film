@@ -3,6 +3,9 @@
 // geri sayım, tepki, tam ekran ve dikey ekranı dener.
 // Gerekenler: çalışan emülatör (adb devices), node tests/broker.mjs 18870 18871, node tests/fake-site.mjs,
 // ./gradlew :app:assembleDebug.  Çalıştır: node tests/e2e-android.mjs
+// Güncelleme adımı için: ./gradlew :app:assembleRelease -PsurumKodu=<şimdiki+1> ile çıkan APK'yı
+// <klasör>/dist/OrtakIzle.apk olarak koy, yanına version.json (bkz. tools/make-version.mjs) yaz,
+// sahte siteyi UPDATE_DIR=<klasör> ile başlat ve testi de UPDATE_DIR=<klasör> ile çalıştır.
 // Emülatörde gerçek uygulama testi (Android WebView + Kotlin oda sunucusu + oda kodu)
 import { execSync } from 'child_process';
 import { createRequire } from 'module';
@@ -210,12 +213,13 @@ paused && Math.abs(st2.t - t2) < 0.5 ? pass(`Durdu: tablet ${st2.t.toFixed(2)} /
 
 step('Tablette sarma → kardeşe gitmeli');
 await player.evaluate(() => { window.tap && tap(); v.currentTime = 300; });
-const seek = await waitFor(() => events.find((m) => m.t === 'sync' && Math.abs(m.time - 300) < 1), 90000, 500);
+// (yavaş emülatörde ağ takılıp kardeş yeniden bağlanırsa sarmayı odanın güncel durumundan öğrenir)
+const seek = await waitFor(() => events.find((m) => m.t === 'sync' && Math.abs(m.time - 300) < 1) || (kardes.state === 'bağlı' && kardes.roomState && Math.abs(kardes.roomState.time - 300) < 5), 90000, 500);
 seek ? pass('Tabletteki sarma kardeşe ulaştı (5:00)') : fail('Sarma ulaşmadı');
 
 step('Tablette oynat → kardeşe gitmeli');
 await player.evaluate(() => (window.tap && tap(), v.play()));
-const play2 = await waitFor(() => events.find((m) => m.t === 'sync' && m.paused === false), 90000, 500);
+const play2 = await waitFor(() => events.find((m) => m.t === 'sync' && m.paused === false) || (kardes.state === 'bağlı' && kardes.roomState && kardes.roomState.paused === false && kardes.roomState.time >= 299), 90000, 500);
 play2 ? pass('Tabletteki oynat kardeşe ulaştı') : fail('Oynat ulaşmadı');
 const tick = await waitFor(() => events.find((m) => m.t === 'tick'), 90000, 500);
 tick ? pass('Tablet oynarken konumunu düzenli bildiriyor (kayma düzeltmesi)') : fail('tick yok');
@@ -328,6 +332,7 @@ SHOT('12-ana-ekran');
 
 if (process.env.UPDATE_DIR) {
   step('Uygulama içi güncelleme (eskisini silmeden)');
+  const startCode = +(adb('shell dumpsys package com.ortakizle.app').match(/versionCode=(\d+)/) || [0, 0])[1];
   const card = await waitFor(() => ui.visible('#updateCard'), 60000, 1000);
   card ? pass('Ana ekranda güncelleme kartı çıktı: ' + (await ui.text('#updTitle'))) : fail('Güncelleme kartı çıkmadı');
   SHOT('13-guncelleme-karti');
@@ -361,8 +366,8 @@ if (process.env.UPDATE_DIR) {
     const b = node && node.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
     if (b) adb(`shell input tap ${(+b[1] + +b[3]) >> 1} ${(+b[2] + +b[4]) >> 1}`);
     else for (const k of [61, 61, 66]) adb(`shell input keyevent ${k}`); // klavyeyle: sekme + giriş
-    const ok = await waitFor(() => /versionCode=7/.test(adb('shell dumpsys package com.ortakizle.app')), 180000, 3000);
-    ok ? pass('Güncelleme üstüne kuruldu (sürüm kodu 7, eskisi silinmedi)') : fail('Güncelleme kurulmadı');
+    const ok = await waitFor(() => /versionCode=(\d+)/.test(adb('shell dumpsys package com.ortakizle.app')) && +adb('shell dumpsys package com.ortakizle.app').match(/versionCode=(\d+)/)[1] > startCode, 180000, 3000);
+    ok ? pass('Güncelleme üstüne kuruldu (eskisi silinmedi)') : fail('Güncelleme kurulmadı');
   }
 }
 

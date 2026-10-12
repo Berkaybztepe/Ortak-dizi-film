@@ -109,6 +109,8 @@
         return;
       }
       this.ws.binaryType = 'arraybuffer';
+      // Aracı bağlantıyı kabul etmezse (CONNACK gelmezse) takılı kalma
+      this.ackTimer = setTimeout(() => !this.connected && this._close(), 15000);
       this.ws.onopen = () => {
         const id = enc.encode(clientId);
         const body = [0, 4, 77, 81, 84, 84, 4, 2, 0, 30, id.length >> 8, id.length & 255, ...id];
@@ -204,6 +206,7 @@
       this.closed = true;
       this.connected = false;
       clearInterval(this.ping);
+      clearTimeout(this.ackTimer);
       try {
         this.ws && this.ws.close();
       } catch {}
@@ -442,6 +445,9 @@
           room: this.config.room || 'salon',
           password: this.config.password || '',
           kind: this.kind,
+          // Bağlantı koptuysa eski kimliğimiz: sunucu eski (ölü) bağlantıyı sessizce kaldırır,
+          // "odadan çıktı" sayıp videoyu durdurmaz
+          prev: this.prevId || undefined,
         });
         this._ping();
         setTimeout(() => this._ping(), 1500);
@@ -510,16 +516,22 @@
       entry.timer = setTimeout(again, 3000);
     }
 
-    // Kaçırılan sohbet mesajlarını iste (en fazla 3 sn'de bir)
+    // Boşluksuz alınmış en büyük sohbet sıra numarası (arada kaçan varsa ondan öncesi): sunucu
+    // daha büyüğünü bildirdikçe kaçan yeniden istenir
+    _contiguous() {
+      const seqs = this.history.map((h) => h.seq).filter(Boolean).sort((a, b) => a - b);
+      if (!seqs.length) return 0;
+      let c = seqs[0];
+      for (let k = 1; k < seqs.length && seqs[k] === c + 1; k++) c = seqs[k];
+      return c;
+    }
+
+    // Kaçırılan sohbet mesajlarını iste (en fazla 2 sn'de bir)
     _resend() {
       if (Date.now() - (this.lastResend || 0) < 2000) return;
       this.lastResend = Date.now();
-      const have = this.history.reduce((a, h) => Math.max(a, h.seq || 0), 0);
-      // Geçmişteki en eski boşluğun öncesinden iste
-      let after = have;
-      const seqs = this.history.map((h) => h.seq).filter(Boolean).sort((a, b) => a - b);
-      for (let k = 1; k < seqs.length; k++) if (seqs[k] !== seqs[k - 1] + 1) { after = seqs[k - 1]; break; }
-      this.send({ t: 'resend', after });
+      // Geçmişteki ilk boşluğun öncesinden itibaren iste
+      this.send({ t: 'resend', after: this._contiguous() });
     }
 
     _ping() {
@@ -578,6 +590,7 @@
         rtt: Number.isFinite(this.bestRtt) ? this.bestRtt : null,
         room: {
           lock: this.lock,
+          lastAction: this.lastAction || 0,
           me: this.me,
           name: this.roomName,
           server: this.serverName,
@@ -615,9 +628,11 @@
           this.serverName = m.server || null;
           this.members = m.members || [];
           this.roomState = m.state || null;
+          this.lastAction = m.lastAction || 0;
           this.lock = m.lock !== false;
           this.history = m.history || [];
-          this.lastSeq = this.history.reduce((a, h) => Math.max(a, h.seq || 0), 0);
+          this.lastSeq = this._contiguous();
+          this.prevId = m.you && m.you.id;
           this.typing = {};
           this.state = 'bağlı';
           this.error = '';
@@ -640,13 +655,17 @@
           delete this.typing[m.member.id];
           break;
         case 'nav':
-          this._upsert(m.member);
-          break;
         case 'buffer':
           this._upsert(m.member);
+          // Kendi bilgimiz değiştiyse (ör. yönetici bize devredildi) "me"yi de güncelle
+          if (this.me && m.member.id === this.me.id) this.me = { ...this.me, ...m.member };
           break;
         case 'lock':
           this.lock = !!m.on;
+          break;
+        case 'state':
+          // Kendi kumanda hareketimizin sunucudaki sonucu
+          if (m.state) this.roomState = m.state;
           break;
         case 'chat':
           if (m.cid && this.pendingChats && this.pendingChats.has(m.cid)) {
@@ -659,11 +678,11 @@
           if (m.seq) {
             const last = this.lastSeq || 0;
             if (m.seq > last + 1) this._resend(); // arada kaçırdığımız var
-            this.lastSeq = Math.max(last, m.seq);
             // Geç gelen (yeniden istenen) mesajı sırasına yerleştir
             const i = this.history.findIndex((h) => h.seq && h.seq > m.seq);
             if (i >= 0) {
               this.history.splice(i, 0, m);
+              this.lastSeq = this._contiguous();
               m = { ...m, late: true };
               if (this.history.length > HISTORY) this.history.shift();
               if (m.from) delete this.typing[m.from];
@@ -672,6 +691,7 @@
           }
           this.history.push(m);
           if (this.history.length > HISTORY) this.history.shift();
+          if (m.seq) this.lastSeq = this._contiguous();
           if (m.from) delete this.typing[m.from];
           break;
         case 'typing':

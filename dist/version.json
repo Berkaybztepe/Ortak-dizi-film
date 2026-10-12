@@ -1,7 +1,7 @@
 {
-  "versionCode": 6,
-  "versionName": "2.4.0",
+  "versionCode": 7,
+  "versionName": "2.4.1",
   "apk": "dist/OrtakIzle.apk",
-  "sha256": "c9b53ec3a0c69639bb5aeb088efaa26135b570c00c68f2cd28aedd38f9c73d59",
-  "notes": "Aynı anda başlama (onda bir saniyenin altında fark), durdurunca aynı kare, sessiz düzeltme, yönetici kilidi, sol üstte geri düğmesi, alttan akan mesajlar, emoji düzeltmesi, biri çıkınca video durur, uygulama içi güncelleme."
+  "sha256": "f67493fc08f91916f416e1c150a6700bf956a6fdf37f5f6b6efd6df9987e261e",
+  "notes": "Bağımsız incelemede bulunan hatalar düzeltildi: aynı anda basınca kumanda karışması, sonradan açılan sayfanın herkesi geri çekmesi, yeniden bağlanınca videonun durması, yönetici devri, giriş sayfası döngüsü, mobil adresler, güncelleme denetimi."
 }

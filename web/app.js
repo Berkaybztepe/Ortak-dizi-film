@@ -76,7 +76,8 @@
     try {
       const x = new URL(a);
       const y = new URL(b);
-      if (x.hostname.replace(/^www\./, '') !== y.hostname.replace(/^www\./, '')) return false;
+      const host = (u) => u.hostname.replace(/^(www|m)\./, '');
+      if (host(x) !== host(y)) return false;
       if (/youtube/.test(x.hostname)) return x.searchParams.get('v') === y.searchParams.get('v');
       const norm = (p) => p.replace(/\/$/, '').replace(/^\/[a-z]{2}(-[a-z]{2})?(?=\/)/i, '');
       return norm(x.pathname) === norm(y.pathname);
@@ -379,14 +380,21 @@
         toast([h('b', null, 'Mesaj gönderilemedi'), h('span', { class: 'q' }, m.text)]);
         break;
       case 'member-join':
-        toast(`${m.member.name} odaya katıldı.`);
-        overlay({ type: 'notice', text: `${m.member.name} odaya geldi`, ms: 3500 });
+        if (!ui.recent?.[m.member.name] || Date.now() - ui.recent[m.member.name] > 60000) {
+          toast(`${m.member.name} odaya katıldı.`);
+          overlay({ type: 'notice', text: `${m.member.name} odaya geldi`, ms: 3500 });
+        }
         render();
         break;
       case 'member-leave':
         delete ui.drift[m.member.id];
-        toast(`${m.member.name} odadan çıktı.`);
-        overlay({ type: 'notice', text: `${m.member.name} odadan çıktı`, ms: 5000 });
+        delete ui.bufSince[m.member.id];
+        // replaced: aynı kişi yeniden bağlandı, eski bağlantısı kalktı (gerçekten çıkmadı)
+        if (m.replaced) (ui.recent = ui.recent || {})[m.member.name] = Date.now();
+        else {
+          toast(`${m.member.name} odadan çıktı.`);
+          overlay({ type: 'notice', text: `${m.member.name} odadan çıktı`, ms: 5000 });
+        }
         render();
         break;
       case 'nav':
@@ -437,16 +445,32 @@
     if (ENV !== 'app' || !locked()) return;
     const a = adminWatching();
     if (!a) return;
-    if (ui.playerOpen && ui.engine && (sameContent(ui.engine.url, a.url) || sameTitle(ui.engine, a))) return;
+    if (ui.playerOpen && ui.engine && onEpisode(ui.engine, a.url)) return;
     if (ui.playerOpen && !ui.engine) return; // sayfa yükleniyor
+    if (opening && opening.url === a.url && Date.now() - opening.at < 10000) return; // zaten açılıyor
     toast(`${a.name} ${a.title || 'bir bölüm'} açtı. Sen de geçiyorsun…`);
+    opening = { url: a.url, at: Date.now() };
     openUrl(a.url);
+  }
+  // Bölümü adresinden tanırız (aynı dizinin bölümlerinin sayfa başlığı aynı olabilir). Site aynı
+  // bölümü başka bir adrese yönlendirebilir: yöneticinin adresini açtığımızda sayfanın vardığı
+  // adresi o bölümün eşi olarak hatırlarız.
+  const aliases = {}; // yöneticinin adresi -> bizde vardığı adres
+  let opening = null; // {url, at}: yöneticinin bölümünü az önce açtık
+  function onEpisode(e, url) {
+    if (!e?.url || !url) return false;
+    if (sameContent(e.url, url)) return true;
+    return !!aliases[url] && sameContent(e.url, aliases[url]);
+  }
+  function noteArrival(e) {
+    if (!opening || Date.now() - opening.at > 10000 || !e.watching || !e.url) return;
+    if (!sameContent(e.url, opening.url)) aliases[opening.url] = e.url;
   }
   // Aynı bölüm farklı adresle açılmış olabilir (yönlendirme): başlık aynıysa aynı say
   function sameTitle(e, a) {
     if (!e?.watching || !a.title || !e.title) return false;
     try {
-      if (new URL(e.url).hostname.replace(/^www\./, '') !== new URL(a.url).hostname.replace(/^www\./, '')) return false;
+      if (new URL(e.url).hostname.replace(/^(www|m)\./, '') !== new URL(a.url).hostname.replace(/^(www|m)\./, '')) return false;
     } catch {
       return false;
     }
@@ -457,16 +481,32 @@
     if (!locked() || !e) return;
     const a = adminWatching();
     if (!a) return;
-    const elsewhere = !e.watching || (e.title && a.title && e.title !== a.title && !sameContent(e.url, a.url));
+    if (opening && Date.now() - opening.at < 10000) return; // sayfa daha yerleşiyor
+    if (Date.now() < (ui.guardPauseUntil || 0)) return; // giriş yapması için mola
+    const elsewhere = !e.watching || !onEpisode(e, a.url);
     if (!elsewhere) {
       ui.leftWatch = 0;
+      ui.guardStreak = 0;
       return;
     }
     if (!ui.leftWatch) ui.leftWatch = Date.now();
     else if (Date.now() - ui.leftWatch > 2500) {
       ui.leftWatch = 0;
-      overlay({ type: 'notice', text: `Bölümü ${a.name} seçiyor · geri getirildin`, ms: 4000 });
+      // Bölüm dışı bir sayfaya (giriş, profil seçimi) art arda düşüyorsa siteye giriş yapması gerekiyordur:
+      // bir süre geri getirmeyi bırak, yoksa giriş sayfasıyla bölüm arasında döner durur
+      if (!e.watching && (ui.guardStreak = (ui.guardStreak || 0) + 1) >= 3) {
+        ui.guardStreak = 0;
+        ui.guardPauseUntil = Date.now() + 120000;
+        overlay({ type: 'notice', text: 'Siteye giriş yapman gerekiyor olabilir. Giriş yapınca bölüme götürüleceksin.', ms: 9000 });
+        return;
+      }
+      opening = { url: a.url, at: Date.now() };
+      ui.engine = null;
+      ui.lastNote = undefined;
+      backShown = null;
       native.call('openPlayer', a.url);
+      // (oynatıcı açılırken katman temizlenir: uyarıyı ondan sonra gönder)
+      overlay({ type: 'notice', text: `Bölümü ${a.name} seçiyor · geri getirildin`, ms: 4000 });
     }
   }
 
@@ -495,6 +535,8 @@
   function openUrl(url) {
     dropOffers(url);
     if (ENV === 'app') {
+      ui.lastNote = undefined;
+      backShown = null;
       native.call('setDesktopMode', !!settings.desktop);
       native.call('openPlayer', url);
       ui.playerOpen = true;
@@ -530,6 +572,7 @@
       case 'engine':
         if (m.url && m.url !== ui.engine?.url) dropOffers(m.url);
         ui.engine = m;
+        noteArrival(m);
         renderWatch();
         guardLock(m);
         break;
@@ -823,7 +866,7 @@
             'data-p': p.id,
             type: 'button',
             'aria-disabled': off ? 'true' : null,
-            onclick: () => (locked() ? lockedToast() : off ? toast('Bu platform uygulama içinde oynatmaya izin vermiyor.') : openUrl(p.url)),
+            onclick: () => (locked() && adminWatching() ? lockedToast() : off ? toast('Bu platform uygulama içinde oynatmaya izin vermiyor.') : openUrl(p.url)),
           },
           h('span', { class: 'nm', lang: 'en' }, p.name),
           h('span', { class: 'sub' }, p.sub)
@@ -847,7 +890,7 @@
       e.preventDefault();
       let v = input.value.trim();
       if (!v) return input.focus();
-      if (locked()) return lockedToast();
+      if (locked() && adminWatching()) return lockedToast();
       if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
       try {
         openUrl(new URL(v).href);
@@ -865,10 +908,16 @@
   }
 
   // "Yükleniyor" bilgisi takılı kalmasın: 15 sn'den eskiyse gösterme
-  const bufFresh = (m) => !!m.buffering && (!(m.id in ui.bufSince) || Date.now() - ui.bufSince[m.id] < 15000);
+  const bufFresh = (m) => {
+    if (!m.buffering) return false;
+    if (!(m.id in ui.bufSince)) ui.bufSince[m.id] = Date.now();
+    return Date.now() - ui.bufSince[m.id] < 15000;
+  };
 
   function renderLock() {
-    const lockOn = locked();
+    // Yönetici bir bölüm izlerken kardeş başka şey açamaz; yönetici izlemiyorken (ör. siteye giriş
+    // yapmak için) açabilir, yönetici bir bölüm açınca oraya götürülür
+    const lockOn = locked() && !!adminWatching();
     for (const b of document.querySelectorAll('#platforms .pf')) b.classList.toggle('off', lockOn);
     const a = adminMember();
     if (ENV === 'app') {
@@ -1193,29 +1242,32 @@
       native.call('toPlayer', { t: 'cmd', cmd: 'pauseAll' });
       setTimeout(() => native.call('playerBack'), 350);
     },
-    onUpdate(info) {
-      ui.update = info || null;
+    onUpdate(info, failed) {
+      // Denetim başarısızsa (internet yok) eldeki bilgiyi silme
+      if (!failed) ui.update = info || null;
       showVersion();
       renderUpdate();
       if (ui.manualCheck) {
         ui.manualCheck = false;
-        toast(info ? `Yeni sürüm hazır: ${info.name}. Ana ekrandaki "Güncelle"ye dokun.` : 'En güncel sürümü kullanıyorsun.');
+        toast(failed ? 'Güncelleme denetlenemedi. İnternet bağlantını kontrol et.' : info ? `Yeni sürüm hazır: ${info.name}. Ana ekrandaki "Güncelle"ye dokun.` : 'En güncel sürümü kullanıyorsun.');
       }
     },
     onUpdateProgress(p) {
       if (typeof p === 'number') {
         $('updFill').style.width = `${p}%`;
         $('updText').textContent = p >= 100 ? 'Kurulum ekranı açılıyor… "Güncelle"ye dokun. Açılmazsa "Kur"a bas.' : `İndiriliyor… %${p}`;
+        clearTimeout(ui.kurTimer);
         if (p >= 100) {
-          setTimeout(() => {
+          ui.kurTimer = setTimeout(() => {
             $('updGo').disabled = false;
             $('updGo').textContent = 'Kur';
           }, 3000);
         }
         return;
       }
+      clearTimeout(ui.kurTimer);
       $('updGo').disabled = false;
-      $('updGo').textContent = 'Tekrar dene';
+      $('updGo').textContent = p === 'izin' ? 'Kur' : 'Tekrar dene';
       $('updText').textContent =
         p === 'izin'
           ? 'Açılan ayarda "Bu kaynaktan izin ver"i aç ve geri dön; kurulum kendiliğinden açılır.'
