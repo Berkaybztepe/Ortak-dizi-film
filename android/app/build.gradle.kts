@@ -12,8 +12,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // -PsurumKodu=N: güncelleme testi için daha yüksek kodlu bir kopya üretmek üzere
-        versionCode = (project.findProperty("surumKodu") as String?)?.toInt() ?: 9
-        versionName = "2.5.0"
+        versionCode = (project.findProperty("surumKodu") as String?)?.toInt() ?: 10
+        versionName = "2.6.0"
     }
 
     // Her makinede aynı anahtar: farklı bilgisayarlardan çıkan APK'lar birbirini güncelleyebilsin

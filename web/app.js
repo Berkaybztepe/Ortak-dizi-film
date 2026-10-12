@@ -144,6 +144,33 @@
     { id: 'netflix', name: 'Netflix', url: 'https://www.netflix.com/', sub: 'Telefonda engelleyebilir' },
   ];
   const REACTIONS = ['😂', '😮', '😱', '❤️', '👏', '🔥', '😢', '👀'];
+  // Kedi tepkileri: dokununca ikinizde videonun üstünde (sesli) küçük kart olarak oynar
+  const MEMES = [
+    { id: 'kedi:uzgun', f: 'uzgun', ad: 'Üzgün', img: true },
+    { id: 'kedi:fiyonk', f: 'fiyonk', ad: 'Fiyonk', img: true },
+    { id: 'kedi:gulen', f: 'gulen', ad: 'Gülen' },
+    { id: 'kedi:zipla', f: 'zipla', ad: 'Zıplayan' },
+    { id: 'kedi:sarilma', f: 'sarilma', ad: 'Sarılma' },
+    { id: 'kedi:muah', f: 'muah', ad: 'Muah', img: true },
+    { id: 'kedi:dans', f: 'dans', ad: 'Dans' },
+    { id: 'kedi:selam', f: 'selam', ad: 'Selam' },
+    { id: 'kedi:sovalye', f: 'sovalye', ad: 'Şövalye' },
+    { id: 'kedi:samuray', f: 'samuray', ad: 'Samuray' },
+    { id: 'kedi:asker', f: 'asker', ad: 'Asker' },
+  ];
+  const memeOf = (id) => MEMES.find((x) => x.id === id);
+  // Kedi şeridi: küçük resimler; dokununca gönderir
+  function memeStrip() {
+    return h(
+      'div',
+      { class: 'memes', role: 'group', 'aria-label': 'Kedi tepkileri' },
+      ...MEMES.map((x) =>
+        h('button', { type: 'button', class: 'meme', title: x.ad, 'aria-label': `Kedi tepkisi: ${x.ad}`, onclick: () => react(x.id) },
+          h('img', { src: `memes/${x.f}-k.jpg`, alt: '', loading: 'lazy', draggable: 'false' }),
+          h('span', null, x.ad))
+      )
+    );
+  }
 
   // ---------------------------------------------------------------- durum
   const ui = {
@@ -174,6 +201,16 @@
     const node = $('chatTpl').content.firstElementChild.cloneNode(true);
     const q = (s) => node.querySelector(`[data-${s}]`);
     const els = { people: q('people'), msgs: q('msgs'), typing: q('typing'), reacts: q('reacts'), form: q('form'), input: q('input') };
+    // 🐱: emoji sırası ile kedi şeridi arasında geçiş
+    const cats = memeStrip();
+    cats.hidden = true;
+    els.reacts.after(cats);
+    els.reacts.append(
+      h('button', { type: 'button', class: 'catbtn', title: 'Kedi tepkileri', 'aria-label': 'Kedi tepkileri', onclick: () => {
+        cats.hidden = !cats.hidden;
+        node.classList.toggle('cats', !cats.hidden);
+      } }, '🐱')
+    );
     for (const e of REACTIONS) {
       els.reacts.append(
         h('button', { type: 'button', title: 'Tepki gönder', 'aria-label': `Tepki: ${e}`, onclick: () => react(e) }, e)
@@ -206,6 +243,13 @@
   })();
 
   function react(emoji) {
+    const meme = memeOf(emoji);
+    if (meme) {
+      client.send({ t: 'react', emoji });
+      if (ui.playerOpen) overlay({ type: 'meme', id: meme.f, img: !!meme.img, name: 'Sen' });
+      else toast(`🐱 ${meme.ad} gönderildi`);
+      return;
+    }
     if (ui.playerOpen) {
       native.call('toPlayer', { t: 'cmd', cmd: 'react', emoji });
       overlay({ type: 'react', emoji, name: 'Sen' });
@@ -426,9 +470,15 @@
       case 'drift':
         ui.drift[m.from] = { err: m.err, at: Date.now() };
         break;
-      case 'react':
-        if (m.from !== meId) overlay({ type: 'react', emoji: m.emoji, name: m.name });
+      case 'react': {
+        if (m.from === meId) break;
+        const meme = memeOf(m.emoji);
+        if (meme) {
+          if (ui.playerOpen && ENV === 'app') overlay({ type: 'meme', id: meme.f, img: !!meme.img, name: m.name });
+          else toast([h('b', null, m.name), ` 🐱 ${meme.ad} gönderdi`]);
+        } else overlay({ type: 'react', emoji: m.emoji, name: m.name });
         break;
+      }
       case 'error':
         if (m.code === 'password') {
           showJoinError('Şifre yanlış. Ayarlardan oda şifresini gir.');
@@ -1233,10 +1283,12 @@
       })
     );
     const playing = !!e?.hasVideo && !e.paused;
-    $('tPlayIcon').setAttribute('href', playing ? '#i-pause' : '#i-play');
-    $('tPlayIcon').parentNode.classList.toggle('play', !playing);
+    for (const id of ['tPlayIcon', 'fPlayIcon']) {
+      $(id).setAttribute('href', playing ? '#i-pause' : '#i-play');
+      $(id).parentNode.classList.toggle('play', !playing);
+    }
     $('tPlay').setAttribute('aria-label', playing ? 'Durdur' : 'Oynat');
-    for (const id of ['tPlay', 'tBack', 'tFwd']) $(id).disabled = !e?.hasVideo;
+    for (const id of ['tPlay', 'tBack', 'tFwd', 'fPlay', 'fBack', 'fFwd']) $(id).disabled = !e?.hasVideo;
     $('tCount').disabled = !e?.hasVideo || client.state !== 'bağlı';
     $('tResync').disabled = !e?.hasVideo;
     $('tCall').disabled = !e?.url || client.state !== 'bağlı';
@@ -1390,6 +1442,16 @@
     native.call('setPanel', 'type');
   });
   $('fPanel').addEventListener('click', () => native.call('setPanel', 'open'));
+  // Haptaki 🐱: kedi şeridini aç/kapat (gönderince kapanır)
+  $('fMemes').append(memeStrip());
+  $('fMemes').addEventListener('click', (e) => e.target.closest('.meme') && setTimeout(() => (($('fMemes').hidden = true), reportFloatSize()), 150));
+  $('fCats').addEventListener('click', () => {
+    $('fMemes').hidden = !$('fMemes').hidden;
+    reportFloatSize();
+  });
+  $('fPlay').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'toggle' }));
+  $('fBack').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'seekBy', delta: -10 }));
+  $('fFwd').addEventListener('click', () => native.call('toPlayer', { t: 'cmd', cmd: 'seekBy', delta: 10 }));
   $('typeClose').addEventListener('click', () => {
     chat.els.input.blur();
     native.call('setPanel', 'closed');

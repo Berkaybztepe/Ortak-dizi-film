@@ -76,7 +76,7 @@ Oda, uygulama arka plandayken de açık kalır. Kapatmak için karttaki ya da bi
    **Ses dili ve altyazı** da her zamanki gibi oynatıcının kendi menüsünden seçilir (Disney+'ta sağ üstteki konuşma balonu, HBO Max'te sağ alttaki menü). Herkes kendi dilini ve altyazısını ayrı seçebilir; senkronu etkilemez.
 4. Sol üstteki yuvarlak **←** düğmesi bölümden çıkar. Kazara çıkılmasın diye "Bölümden çıkılsın mı?" diye sorar; telefonun geri hareketi de aynı soruyu sorar. Çıkınca video ikinizde de durur.
 5. Panelde:
-   - **Sadece video:** sohbeti gizler, video tam ekran olur (paneli yanda sağa, altta aşağı kaydırmak da aynı işi görür). Gelen mesajlar videonun altından akar: yana kaydırınca kapanır, dokununca sohbet açılır. Turuncu sohbet düğmesine dokununca altta bir **yazma çubuğu** açılır: video üstte oynamaya devam eder, yazdığın mesaj videonun üstünden akar (geri tuşu ya da ✕ kapatır). Yanındaki küçük düğme paneli açar. Düğme parmakla istenen yere sürüklenebilir, yeri hatırlanır.
+   - **Sadece video:** sohbeti gizler, video tam ekran olur (paneli yanda sağa, altta aşağı kaydırmak da aynı işi görür). Gelen mesajlar videonun altından akar: yana kaydırınca kapanır, dokununca sohbet açılır. Haptaki ⟲ ⏯ ⟳ düğmeleri oynat/durdur ve 10 sn sarmayı her zaman yapar (sitenin kendi düğmeleri ne yaparsa yapsın). Turuncu sohbet düğmesine dokununca altta bir **yazma çubuğu** açılır: video üstte oynamaya devam eder, yazdığın mesaj videonun üstünden akar (geri tuşu ya da ✕ kapatır). Yanındaki küçük düğme paneli açar. Düğme parmakla istenen yere sürüklenebilir, yeri hatırlanır.
    - **Oynat/Durdur, 10 sn geri, 10 sn ileri:** sohbet açıkken videoya dokunmadan kumanda. Basınca ikinizde birden olur.
    - **Dakika:** panelde yazan süre, oynatıcının kendi ilerleme çubuğundan okunur; yani Disney+'ın gösterdiği dakikayla aynıdır.
    - **Durum:** "Senkron" yalnızca ölçülen fark çeyrek saniyenin altındayken yazar; biri geride kaldıysa "Eşitleniyor…", dakika okunamıyorsa "Güvenli mod" yazar.
@@ -84,7 +84,9 @@ Oda, uygulama arka plandayken de açık kalır. Kapatmak için karttaki ya da bi
    - **3-2-1 başlat:** ikiniz de durup aynı kareye gelirsiniz, geri sayım bitince aynı anda başlar.
    - **Buraya çağır:** açtığın bölümü diğerine gönderir.
    - Altta sohbet ve tepkiler.
-6. Yatay tutunca video solda, panel sağda olur; telefonda panelin üst kısmı küçülür, sohbete yer kalır. Klavye açılınca panelde yalnızca sohbet kalır, video yanda oynamaya devam eder. **Sadece video** ile video tam ekrana geçer; küçük bir sohbet düğmesi kalır (dikeyde sağ altta, yatayda oynatıcının düğmelerini kapatmasın diye sağ kenarın ortasında; sürüklenebilir), mesajlar videonun sol altından akar. Dikeyde video üstte, panel altta durur.
+6. **Kedi tepkileri:** sohbetin altındaki 🐱 (ya da haptaki 🐱) kedi videolarını ve çıkartmalarını açar: Üzgün, Fiyonk, Gülen, Zıplayan, Sarılma, Muah, Dans, Selam, Şövalye, Samuray, Asker. Dokunduğun kedi ikinizin ekranında da sol üst köşeden kayarak girer, küçük bir kartta sesli oynar ve çıkar (ortayı ve altyazıyı kapatmaz). Karta dokununca ya da kaydırınca kapanır.
+7. **Sohbet panelinin boyutu:** yanda panelin sol kenarındaki tutamağı sağa-sola, altta üst kenarındaki tutamağı yukarı-aşağı sürükle. Boyut hatırlanır.
+8. Yatay tutunca video solda, panel sağda olur; telefonda panelin üst kısmı küçülür, sohbete yer kalır. Klavye açılınca panelde yalnızca sohbet kalır, video yanda oynamaya devam eder. **Sadece video** ile video tam ekrana geçer; küçük bir sohbet düğmesi kalır (dikeyde sağ altta, yatayda oynatıcının düğmelerini kapatmasın diye sağ kenarın ortasında; sürüklenebilir), mesajlar videonun sol altından akar. Dikeyde video üstte, panel altta durur.
 
 Ayarlar (sağ üstteki dişli):
 - **Bölümü sadece ben seçeyim** (yalnızca odayı açanda): açıkken diğeri bölüm değiştiremez ve bölümden çıkamaz; sen ne açarsan onda da kendiliğinden açılır. Kazara başka sayfaya giderse birkaç saniyede bölüme geri getirilir.

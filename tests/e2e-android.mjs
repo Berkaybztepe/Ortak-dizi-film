@@ -7,7 +7,7 @@
 // <klasör>/dist/OrtakIzle.apk olarak koy, yanına version.json (bkz. tools/make-version.mjs) yaz,
 // sahte siteyi UPDATE_DIR=<klasör> ile başlat ve testi de UPDATE_DIR=<klasör> ile çalıştır.
 // Emülatörde gerçek uygulama testi (Android WebView + Kotlin oda sunucusu + oda kodu)
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 require(new URL('../web/room-client.js', import.meta.url).pathname);
@@ -91,7 +91,30 @@ async function waitFor(fn, ms = 60000, every = 1000) {
 step('APK kuruluyor');
 if (!process.env.SKIP_INSTALL) console.log(adb(`install -r -g ${new URL('../android/app/build/outputs/apk/debug/app-debug.apk', import.meta.url).pathname}`));
 adb('shell pm clear com.ortakizle.app');
+// Yavaş emülatörde sistemin "yanıt vermiyor" pencereleri dokunuşları yutmasın
+try {
+  adb('shell settings put global hide_error_dialogs 1');
+  // Ayar ancak bir yapılandırma değişikliğinde okunur: yazı boyutunu bir anlığına değiştir
+  adb('shell settings put system font_scale 1.01');
+  adb('shell settings put system font_scale 1.0');
+  adb('shell settings put global window_animation_scale 0');
+  adb('shell settings put global transition_animation_scale 0');
+  adb('shell settings put global animator_duration_scale 0');
+  adb('shell svc power stayon true');
+} catch {}
 adb('logcat -c');
+// Günlüğü canlı izle (her adımda baştan okumak yavaş emülatörde saniyeler sürüyor; kısa ömürlü
+// öğeler -akan mesaj, kedi kartı- bu arada kayboluyordu)
+const LIVE = [];
+const lc = spawn(ADB, ['logcat', '-s', 'OrtakIzle:*', 'MediaPlayer:E', 'MediaPlayerNative:E']);
+let lcRest = '';
+lc.stdout.on('data', (d) => {
+  const parts = (lcRest + String(d)).split('\n');
+  lcRest = parts.pop();
+  LIVE.push(...parts);
+});
+process.on('exit', () => lc.kill());
+const live = () => LIVE;
 // Güncelleme izni şimdiden (sonradan değişirse Android uygulamayı kapatır)
 if (process.env.UPDATE_DIR) adb('shell appops set com.ortakizle.app REQUEST_INSTALL_PACKAGES allow');
 // Yavaş emülatörde sistem arayüzü "yanıt vermiyor" penceresi açabiliyor: tuş/dokunuştan önce kapat
@@ -218,7 +241,7 @@ const seek = await waitFor(() => events.find((m) => m.t === 'sync' && Math.abs(m
 seek ? pass('Tabletteki sarma kardeşe ulaştı (5:00)') : fail('Sarma ulaşmadı');
 
 step('Tablette oynat → kardeşe gitmeli');
-await player.evaluate(() => (window.tap && tap(), v.play()));
+await player.evaluate(() => { if (window.tap) tap(); v.play().catch(() => {}); });
 const play2 = await waitFor(() => events.find((m) => m.t === 'sync' && m.paused === false) || (kardes.state === 'bağlı' && kardes.roomState && kardes.roomState.paused === false && kardes.roomState.time >= 299), 90000, 500);
 play2 ? pass('Tabletteki oynat kardeşe ulaştı') : fail('Oynat ulaşmadı');
 const tick = await waitFor(() => events.find((m) => m.t === 'tick'), 90000, 500);
@@ -263,7 +286,7 @@ const btnAt = await player.evaluate(() => {
   return { x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight };
 });
 const pbox = (() => {
-  const l = logLines().filter((x) => /Oynatıcı kutusu: \d+ \d+ \d+ \d+/.test(x)).pop();
+  const l = live().filter((x) => /Oynatıcı kutusu: \d+ \d+ \d+ \d+/.test(x)).pop();
   const m = l && l.match(/Oynatıcı kutusu: (\d+) (\d+) (\d+) (\d+)/);
   return m ? { x: +m[1], y: +m[2], w: +m[3], h: +m[4] } : null;
 })();
@@ -278,12 +301,38 @@ if (pbox) {
 } else fail('Oynatıcı kutusunun yeri günlükte yok');
 await player.evaluate(() => document.getElementById('__tapme')?.remove());
 
+step('Sohbet paneli kenarından sürüklenip büyütülür / küçültülür');
+const uiBox = () => {
+  const l = live().filter((x) => /Arayüz kutusu: \d+ \d+ \d+ \d+ side/.test(x)).pop();
+  const m = l && l.match(/Arayüz kutusu: (\d+) (\d+) (\d+) (\d+)/);
+  return m ? { x: +m[1], y: +m[2], w: +m[3], h: +m[4] } : null;
+};
+const ub0 = uiBox();
+if (ub0) {
+  await clearDialogs();
+  const y = Math.round(ub0.y + ub0.h / 2);
+  adb(`shell input swipe ${ub0.x + 8} ${y} ${ub0.x - 220} ${y} 900`);
+  const ub1 = await waitFor(() => {
+    const b = uiBox();
+    return b && b.w > ub0.w + 120 ? b : null;
+  }, 12000, 700);
+  ub1 ? pass(`Panel kenarından çekince genişledi (${ub0.w} → ${ub1.w} px)`) : fail('Panel genişlemedi: ' + JSON.stringify([ub0, uiBox()]));
+  const ub2 = ub1 || uiBox();
+  adb(`shell input swipe ${ub2.x + 8} ${y} ${ub2.x + 300} ${y} 900`);
+  const ub3 = await waitFor(() => {
+    const b = uiBox();
+    return b && b.w < ub2.w - 150 ? b : null;
+  }, 12000, 700);
+  ub3 ? pass(`Panel geri daraltıldı (${ub2.w} → ${ub3.w} px)`) : fail('Panel daralmadı: ' + JSON.stringify(uiBox()));
+  SHOT('6b-panel-boyut');
+} else fail('Arayüz kutusunun yeri günlükte yok');
+
 step('Tepki, akan mesaj ve uyarılar (Android katmanı)');
 // Ekrandaki gerçek Android görünümleri (uiautomator) içinde yazı ara
 // Ekrandaki Android görünümleri yerine (video oynarken uiautomator ekranı okuyamıyor ve yavaş
 // emülatörü kilitliyor) test sürümünün günlüğüne bakılır: katmana gelen her şey "Katman: {...}",
 // onay pencereleri "Onay: ...", geri düğmesinin yeri "Geri düğmesi: x y" olarak yazılır.
-const logLines = () => adb('logcat -d -s OrtakIzle').split('\n');
+const logLines = () => live();
 const katman = (re) => logLines().some((l) => /Katman:/.test(l) && re.test(l));
 async function seeOverlay(logRe, ms = 20000) {
   return waitFor(() => katman(logRe), ms, 700);
@@ -293,6 +342,28 @@ function backButtonAt() {
   const m = l && l.match(/Geri düğmesi: (\d+) (\d+)/);
   return m ? { x: +m[1], y: +m[2] } : null;
 }
+// Kedi tepkisi: tablet gönderir (kardeşe gider, tablette kart oynar); kardeş gönderir (tablette oynar)
+await ui.evaluate(() => document.querySelector('.catbtn').click());
+await sleep(500);
+await ui.evaluate(() => document.querySelector('.memes .meme[title="Sarılma"]').click());
+const catOut = await waitFor(() => events.find((m) => m.t === 'react' && m.emoji === 'kedi:sarilma'), 15000, 500);
+catOut ? pass('Kedi tepkisi kardeşe gitti (kedi:sarilma)') : fail('Kedi tepkisi gitmedi');
+const catHere = await waitFor(() => logLines().some((l) => /Kedi: sarilma/.test(l)), 15000, 200);
+catHere ? pass('Tablette kedi videosu kartı açıldı') : fail('Tablette kedi kartı açılmadı');
+await sleep(1500);
+SHOT('7a-kedi');
+await sleep(2500);
+const mpErr = logLines().filter((l) => /MediaPlayer.*(error|Error)\s*\(/.test(l));
+!mpErr.length ? pass('Kedi videosu hatasız oynadı') : fail('Video oynatma hatası: ' + mpErr.slice(-2).join(' | '));
+// (yavaş emülatörde kardeşin bağlantısı arada yenilenebiliyor: gidene kadar birkaç kez dene)
+let muah = false;
+for (let i = 0; i < 4 && !muah; i++) {
+  kardes.send({ t: 'react', emoji: 'kedi:muah' });
+  muah = !!(await waitFor(() => logLines().some((l) => /Kedi: muah/.test(l)), 8000, 200));
+}
+await sleep(1500);
+SHOT('7b-muah');
+muah ? pass('Kardeşin "Muah" resmi tablette köşeden kayarak açıldı') : fail('Muah tabletinde görünmedi');
 kardes.send({ t: 'react', emoji: '🔥' });
 const rx = await seeOverlay(/"type":"react".*🔥|🔥.*"type":"react"/, 15000);
 rx ? pass('Tepki Android katmanına ulaştı (videonun üstünde uçar)') : fail('Tepki katmana gelmedi');
@@ -352,7 +423,7 @@ const mAt = await waitFor(() => {
   const all = msgLog();
   const m = all.length > seenMsgs && all[all.length - 1].match(/Mesaj yeri: (\d+) (\d+)/);
   return m ? { x: +m[1], y: +m[2] } : null;
-}, 20000, 700);
+}, 20000, 150);
 if (mAt) {
   const gone0 = logLines().filter((x) => /Mesaj kaydırılıp kapatıldı/.test(x)).length;
   adb(`shell input swipe ${mAt.x} ${mAt.y} ${Math.max(5, mAt.x - 450)} ${mAt.y} 350`);
@@ -366,7 +437,7 @@ const mAt2 = await waitFor(() => {
   const all = msgLog();
   const m = all.length > seenMsgs2 && all[all.length - 1].match(/Mesaj yeri: (\d+) (\d+)/);
   return m ? { x: +m[1], y: +m[2] } : null;
-}, 20000, 700);
+}, 20000, 150);
 if (mAt2) {
   adb(`shell input tap ${mAt2.x} ${mAt2.y}`);
   (await waitFor(() => ui.visible('#vWatch'), 10000, 500)) ? pass('Akan mesaja dokununca sohbet açıldı') : fail('Mesaja dokununca sohbet açılmadı');
@@ -403,9 +474,9 @@ adb('shell settings put system user_rotation 0');
 await sleep(4000);
 
 step('Geri tuşu kazara çıkarmaz, onay sorar');
-await player.evaluate(() => (window.tap && tap(), v.play()));
+await player.evaluate(() => { if (window.tap) tap(); v.play().catch(() => {}); });
 await sleep(2000);
-const onaylar = () => adb('logcat -d -s OrtakIzle').split('\n').filter((l) => /Onay: Bölümden çıkılsın mı/.test(l)).length;
+const onaylar = () => live().filter((l) => /Onay: Bölümden çıkılsın mı/.test(l)).length;
 const o0 = onaylar();
 await clearDialogs();
 await sleep(500);

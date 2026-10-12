@@ -130,7 +130,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setupUi()
-        ui.setOnTouchListener { _, e -> floatDrag(e) }
+        ui.setOnTouchListener { _, e -> panelResize(e) || floatDrag(e) }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = onBack()
         })
@@ -347,6 +347,7 @@ class MainActivity : ComponentActivity() {
             if (BuildConfig.DEBUG) Log.i(TAG, "Katman: $o")
             when (o.optString("type")) {
                 "react" -> if (watching) overlay.react(o.optString("emoji").take(16), o.optString("name").take(30))
+                "meme" -> if (watching) overlay.meme(o.optString("id"), o.optBoolean("img"), o.optString("name").take(30))
                 "msg" -> if (watching) overlay.message(o.optString("name").take(30), o.optString("text").take(300))
                 "notice" -> if (watching) overlay.notice(o.optString("text").take(200), o.optLong("ms", 4500))
                 "note" -> overlay.note(o.optString("text").takeIf { o.has("text") && !o.isNull("text") }?.take(120))
@@ -957,7 +958,9 @@ class MainActivity : ComponentActivity() {
             }
         } else if (landscape) {
             mode = "side"
-            val panel = min(dp(380), (aw * 0.42f).roundToInt())
+            // Panel genişliği: kullanıcı kenarından sürükleyip ayarladıysa o (dp), yoksa varsayılan
+            val want = prefs.getInt("panelGenislik", 0).takeIf { it > 0 }?.let { dp(it) } ?: min(dp(380), (aw * 0.42f).roundToInt())
+            val panel = want.coerceIn(min(dp(250), aw / 2), (aw * 0.7f).roundToInt())
             place(playerBox, left, top, aw - panel, ah)
             place(ui, left + aw - panel, top, panel, ah)
         } else {
@@ -965,6 +968,8 @@ class MainActivity : ComponentActivity() {
             // Video 16:9, panel en az ekranın %45'i
             var ph = (aw * 9f / 16f).roundToInt()
             ph = min(ph, (ah * 0.55f).roundToInt())
+            // Kullanıcı panelin üst kenarını sürükleyip videoyu büyüttü/küçülttüyse
+            prefs.getFloat("videoYukseklik", 0f).takeIf { it > 0f }?.let { ph = (ah * it).roundToInt() }
             // Klavye açıkken videoyu küçült ama yok etme
             ph = max(min(ph, ah - dp(220)), dp(120))
             place(playerBox, left, top, aw, ph)
@@ -989,6 +994,9 @@ class MainActivity : ComponentActivity() {
                 p.getLocationOnScreen(loc)
                 Log.i(TAG, "Oynatıcı kutusu: ${loc[0]} ${loc[1]} ${p.width} ${p.height}")
             }
+            val ul = IntArray(2)
+            ui.getLocationOnScreen(ul)
+            Log.i(TAG, "Arayüz kutusu: ${ul[0]} ${ul[1]} ${ui.width} ${ui.height} $lastLayoutMode")
         }, 400)
         if (mode != lastLayoutMode) {
             lastLayoutMode = mode
@@ -1040,6 +1048,45 @@ class MainActivity : ComponentActivity() {
         val cx = lp.leftMargin + lp.width - dp(39)
         val cy = if (floatUp) lp.topMargin + lp.height - dp(39) else lp.topMargin + dp(39)
         Log.i(TAG, "Sohbet düğmesi: $cx $cy")
+    }
+
+    // Paneli boyutlandırma: yanda sol kenarından (sağa-sola), altta üst kenarından (yukarı-aşağı)
+    // tutup sürükle. Yeni boyut hatırlanır.
+    private var resizing = false
+    private fun panelResize(e: MotionEvent): Boolean {
+        val mode = lastLayoutMode
+        if (mode != "side" && mode != "bottom") return false
+        val lp = ui.layoutParams as? FrameLayout.LayoutParams ?: return false
+        val (il, itop, ir, ib) = insets.toList()
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                // Tutamak bölgesi: panelin kenarındaki 20 dp'lik şerit (düğmeler bunun dışında)
+                resizing = if (mode == "side") e.x < dp(20) else e.y < dp(20)
+                return resizing
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!resizing) return false
+                if (mode == "side") {
+                    val right = root.width - ir
+                    val aw = right - il
+                    val w = (right - e.rawX.roundToInt()).coerceIn(min(dp(250), aw / 2), (aw * 0.7f).roundToInt())
+                    prefs.edit().putInt("panelGenislik", (w / density).roundToInt()).apply()
+                } else {
+                    val ah = root.height - ib - itop
+                    val ph = (e.rawY.roundToInt() - itop).coerceIn(dp(120), max(dp(120), ah - dp(200)))
+                    prefs.edit().putFloat("videoYukseklik", ph.toFloat() / ah).apply()
+                }
+                relayout()
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val was = resizing
+                resizing = false
+                if (was && BuildConfig.DEBUG) Log.i(TAG, "Panel boyutu: ${lp.width} x ${lp.height}")
+                return was
+            }
+        }
+        return resizing
     }
 
     private fun floatDrag(e: MotionEvent): Boolean {

@@ -90,6 +90,19 @@ try {
     ? pass('Tepki karşı tarafın ekranında (yerel katman) uçtu')
     : fail('Tepki B\'ye ulaşmadı: ' + JSON.stringify(B.overlays('react')));
   A.overlays('react').some((r) => r.emoji === '🔥') ? pass('Gönderen kendi tepkisini de görüyor') : fail('Kendi tepkisi görünmedi');
+  // Kedi tepkisi: şeridi aç, birine dokun → ikisinde de video kartı
+  await A.ui.locator('.catbtn').first().click();
+  await A.ui.locator('.memes .meme[title="Dans"]').first().click();
+  (await waitFor(() => B.overlays('meme').some((r) => r.id === 'dans' && r.name === 'Berkay'), 4000))
+    ? pass('Kedi tepkisi (Dans) karşı tarafta video kartı olarak açıldı')
+    : fail('Kedi tepkisi B\'ye ulaşmadı: ' + JSON.stringify(B.overlays('meme')));
+  A.overlays('meme').some((r) => r.id === 'dans' && r.name === 'Sen') ? pass('Gönderen kendi kedi kartını da görüyor') : fail('Kendi kedi kartı yok');
+  await A.ui.locator('.memes .meme[title="Üzgün"]').first().click();
+  (await waitFor(() => B.overlays('meme').some((r) => r.id === 'uzgun' && r.img === true), 4000)) ? pass('Üzgün kedi çıkartması karşıya gitti') : fail('Üzgün gitmedi');
+  await A.ui.locator('.memes .meme[title="Muah"]').first().click();
+  (await waitFor(() => B.overlays('meme').some((r) => r.id === 'muah' && r.img === true), 4000)) ? pass('MUAAH resmi karşıya gitti') : fail('Muah gitmedi');
+  const thumbs = await A.ui.evaluate(() => [...document.querySelectorAll('.chat .memes img')].map((i) => i.naturalWidth));
+  thumbs.length >= 10 && thumbs.every((w) => w > 0) ? pass(thumbs.length + ' kedi küçük resmi yüklendi') : fail('Küçük resimler: ' + JSON.stringify(thumbs));
   await B.ui.locator('#collapseBtn').click(); // sadece video
   await sleep(500);
   await A.ui.locator('#chatInput').fill('bu sahne efsane');

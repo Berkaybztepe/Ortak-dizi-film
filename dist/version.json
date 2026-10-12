@@ -1,7 +1,7 @@
 {
-  "versionCode": 9,
-  "versionName": "2.5.0",
+  "versionCode": 10,
+  "versionName": "2.6.0",
   "apk": "dist/OrtakIzle.apk",
-  "sha256": "65a8775eaac06e5439ffb8248b2098b1afe913494ceedc63d4407ae59460add6",
-  "notes": "Disney+: soldaki oynatıcının kendi düğmelerine basılabilir; ±10 artık donmuyor (oynatıcının kendi tuşuyla sarılır, donarsa kendiliğinden kurtulur). Odasızken/bağlantı yokken uygulama videoya hiç karışmaz. İzlerken yazma çubuğu, daha geniş sohbet, geri ve sohbet düğmeleri sitenin düğmelerine değmez. Yeni görünüm, sorun raporu."
+  "sha256": "9e524c40390934658cd4e086cd605fc13e5a9f0f3389fba826246a828f878c44",
+  "notes": "11 kedi tepkisi (Üzgün, Fiyonk, Gülen, Zıplayan, Sarılma, Muah, Dans, Selam, Şövalye, Samuray, Asker): ikinizde de sol üstten kayarak gelir. Sohbet paneli kenarından sürüklenip büyütülür/küçültülür. Video modundaki haptan oynat/durdur ve ±10. Tablet için düzenlendi, Disney+ dokunuş ve sarma düzeltmeleri."
 }

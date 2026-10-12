@@ -34,7 +34,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 private const val MAX_HISTORY = 100
 private const val MAX_TEXT = 1000
-private val REACTIONS = listOf("😂", "😮", "😱", "❤️", "👏", "🔥", "😢", "👀")
+private val REACTIONS = listOf(
+    "😂", "😮", "😱", "❤️", "👏", "🔥", "😢", "👀",
+    // Kedi tepkileri (uygulamada videonun üstünde sesli küçük kart olarak oynar)
+    "kedi:uzgun", "kedi:fiyonk", "kedi:gulen", "kedi:zipla", "kedi:sarilma", "kedi:dans", "kedi:selam", "kedi:sovalye", "kedi:asker", "kedi:samuray", "kedi:muah",
+)
 private val KINDS = listOf("app", "eklenti", "web")
 private const val COUNTDOWN_MS = 3500L
 // Planlı başlatma: istemci "şu sunucu anında başla" diyebilir (en fazla bu kadar ileri)

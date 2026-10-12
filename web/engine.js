@@ -1231,7 +1231,8 @@
           else joinStart({ ...m, by: m.from }, true);
           break;
         case 'react':
-          if (video) stage.react(m.emoji, m.name);
+          // Kedi tepkisi (uygulamada video kartı): eklentide kedi yüzü olarak uçar
+          if (video) stage.react(/^kedi:/.test(m.emoji) ? '🐱' : m.emoji, m.name);
           break;
         case 'cmd':
           command(m.cmd, m);
@@ -1417,7 +1418,9 @@
     // önce durdur-oynat ile, olmazsa sitenin kendi ±10 tuşlarıyla (ileri+geri) kurtarılır. Doğrudan
     // konum değiştirmek bu platformda donmaya yol açtıysa bundan sonra sarmalar tuşla yapılır.
     setInterval(() => {
-      if (!video || video.paused || video.ended || starting || holding) {
+      // Yalnızca bu sorunun görüldüğü platformda (Disney+): başka sitelerde yavaş internetteki
+      // normal yükleme beklemesi donma sanılmasın
+      if (!keysForFar || !video || video.paused || video.ended || starting || holding) {
         stallSince = 0;
         return;
       }
@@ -1432,16 +1435,17 @@
       }
       if (!stallSince) stallSince = Date.now();
       const stuck = Date.now() - stallSince;
-      if (stuck < 3500) return;
+      // Yavaş internette sarmadan sonra birkaç saniye yükleme olağandır; 6 sn ilerlemezse donmuştur
+      if (stuck < 6000) return;
       // Sarmadan bağımsız takılma (yavaş internet) oynatıcının işidir: karışma
       if (Date.now() - lastProgSeekAt > 20000) {
-        if (stuck < 4600) log(`takılma (sarma yok) rs=${video.readyState}`);
+        if (stuck < 7100) log(`takılma (sarma yok) rs=${video.readyState}`);
         return;
       }
       stallSince = Date.now();
       stallFixes++;
       log(`donma ${(stuck / 1000).toFixed(1)} sn, kurtarma ${stallFixes} rs=${video.readyState}`);
-      if (canKeys && !seekViaKeys && Date.now() - lastProgSeekAt < 20000) {
+      if (!seekViaKeys && Date.now() - lastProgSeekAt < 20000) {
         seekViaKeys = true;
         log('bu platformda sarma artık sitenin tuşlarıyla');
       }

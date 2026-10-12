@@ -227,9 +227,16 @@
   <div class="float" id="vFloat" hidden>
     <div class="pill">
       <div class="people" id="fPeople"></div>
+      <span class="fctl">
+        <button class="btn icon quiet fskip" id="fBack" type="button" aria-label="10 saniye geri"><svg class="i"><use href="#i-rew"/></svg><b>10</b></button>
+        <button class="btn icon quiet" id="fPlay" type="button" aria-label="Oynat ya da durdur"><svg class="i"><use href="#i-play" id="fPlayIcon"/></svg></button>
+        <button class="btn icon quiet fskip" id="fFwd" type="button" aria-label="10 saniye ileri"><svg class="i"><use href="#i-ffw"/></svg><b>10</b></button>
+      </span>
+      <button class="btn icon quiet" id="fCats" type="button" title="Kedi tepkileri" aria-label="Kedi tepkileri">🐱</button>
       <button class="btn icon quiet" id="fPanel" title="Paneli aç" aria-label="Paneli aç"><svg class="i"><use href="#i-expand"/></svg></button>
       <span class="count"><button class="btn icon" id="fOpen" title="Mesaj yaz" aria-label="Mesaj yaz"><svg class="i"><use href="#i-chat"/></svg></button><span class="unread" id="fUnread" hidden>0</span></span>
     </div>
+    <div class="fmemes" id="fMemes" hidden></div>
     <div class="toasts" id="fToasts"></div>
   </div>
 

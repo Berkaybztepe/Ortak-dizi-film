@@ -83,6 +83,19 @@ try {
   await sleep(300);
   const cls = await A.ui.evaluate(() => document.getElementById('vFloat').className);
   ok(/up/.test(cls), 'Yüzen hap alt konumda (bildirimler üstte açılır)');
+  // Yüzen hapta kendi kumandamız (oynat/durdur, ±10)
+  await A.ui.setViewportSize({ width: 360, height: 90 });
+  await A.ui.evaluate(() => OI.setLayout({ mode: 'float' }));
+  await sleep(300);
+  const k0 = A.called('toPlayer').length;
+  for (const id of ['fPlay', 'fBack', 'fFwd']) await A.ui.locator('#' + id).click();
+  const cmds = A.called('toPlayer').slice(k0).map((x) => (typeof x === 'string' ? JSON.parse(x) : x)).filter((m) => m.t === 'cmd');
+  ok(cmds.some((m) => m.cmd === 'toggle') && cmds.some((m) => m.cmd === 'seekBy' && m.delta === -10) && cmds.some((m) => m.cmd === 'seekBy' && m.delta === 10),
+    'Hapta oynat/durdur ve ±10 çalışıyor ' + JSON.stringify(cmds.map((m) => m.cmd + (m.delta || ''))));
+  const pillOver = await A.ui.evaluate(() => { const r = document.querySelector('.pill').getBoundingClientRect(); return r.right <= innerWidth + 1 && r.left >= 0; });
+  ok(pillOver, 'Hap ekrana sığıyor');
+  if (OUT) await A.ui.screenshot({ path: `${OUT}/hap.png`, omitBackground: true });
+
   // İzlerken yazma çubuğu: sohbet düğmesi → video üstte, altta yazı kutusu; mesaj gider, kapanır
   await A.ui.setViewportSize({ width: 800, height: 58 });
   await A.ui.evaluate(() => OI.setLayout({ mode: 'float' }));

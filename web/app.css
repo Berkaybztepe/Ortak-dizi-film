@@ -579,3 +579,39 @@ body.float .toast { width: 320px; }
 }
 /* Mesaj listesinin üst kenarı yumuşakça kaybolur (yarım kalan balon çizgi gibi görünmesin) */
 .msgs { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px); mask-image: linear-gradient(to bottom, transparent 0, #000 18px); }
+
+/* Paneli boyutlandırma tutamağı: yanda sol kenar, altta üst kenar (20 dp şerit, içerik dışında) */
+body.side .watch { padding-left: 8px; }
+body.side .grab { width: 20px; cursor: ew-resize; }
+body.side .grab::after { left: 7px; width: 5px; height: 52px; margin-top: -26px; background: #4a4a50; }
+body.bottom .grab { height: 20px; cursor: ns-resize; }
+body.bottom .grab::after { width: 52px; height: 5px; margin-top: 7px; background: #4a4a50; }
+
+/* Yüzen hapta kendi kumandamız: oynat/durdur ve ±10 (sitenin düğmeleri ne olursa olsun çalışır) */
+.pill .fctl { display: flex; align-items: center; gap: 2px; padding: 0 4px; margin: 0 2px; border-left: 1px solid rgba(255, 255, 255, .1); border-right: 1px solid rgba(255, 255, 255, .1); }
+.pill .fctl .btn { width: 38px; min-height: 38px; background: transparent; color: #fff; position: relative; }
+.pill .fctl .btn svg { width: 22px; height: 22px; }
+.pill .fctl #fPlay svg.play { fill: currentColor; margin-left: 2px; }
+.pill .fskip b { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -38%); font: 800 8px/1 var(--sans); }
+.pill .fctl .btn:disabled { opacity: .35; }
+
+/* Kedi tepkileri */
+.catbtn { font-size: 20px; }
+.chat.cats .catbtn { background: var(--accent-lo) !important; }
+.memes { display: flex; gap: 8px; padding: 6px 10px 2px; overflow-x: auto; scrollbar-width: none; touch-action: pan-x; }
+.memes[hidden] { display: none; }
+.meme { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; border: 0; padding: 0; background: transparent; color: var(--text-dim);
+  font: 700 10px/1 var(--sans); }
+.meme img { width: 58px; height: 58px; border-radius: 14px; object-fit: cover; box-shadow: 0 6px 14px -8px rgba(0, 0, 0, .8), inset 0 0 0 1px rgba(255, 255, 255, .1);
+  transition: transform .12s; }
+.meme:active img { transform: scale(.9) rotate(-4deg); }
+@media (max-height: 560px) {
+  body.side .meme img, body.bottom .meme img { width: 46px; height: 46px; border-radius: 12px; }
+  body.side .meme span, body.bottom .meme span { display: none; }
+}
+@media (max-height: 300px) { body.side .memes, body.bottom .memes { display: none; } }
+.fmemes { background: rgba(18, 18, 20, .82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-radius: 20px; max-width: 340px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .08); }
+.fmemes[hidden] { display: none; }
+.fmemes .memes { padding: 10px; flex-wrap: wrap; justify-content: center; overflow: visible; }
+.pill #fCats { width: 34px; min-height: 34px; background: transparent; font-size: 18px; }

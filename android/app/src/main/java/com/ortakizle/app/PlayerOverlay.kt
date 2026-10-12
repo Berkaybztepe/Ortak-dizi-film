@@ -10,7 +10,14 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.SurfaceTexture
+import android.graphics.BitmapFactory
 import android.graphics.Typeface
+import android.media.MediaPlayer
+import android.view.Surface
+import android.view.TextureView
+import android.view.ViewOutlineProvider
+import android.widget.ImageView
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
@@ -134,6 +141,7 @@ class PlayerOverlay(context: Context, private val onBack: () -> Unit, private va
         v.setOnTouchListener { _, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    if (BuildConfig.DEBUG) Log.i("OrtakIzle", "Kaydırma başladı: ${e.rawX.roundToInt()} ${e.rawY.roundToInt()}")
                     x0 = e.rawX
                     y0 = e.rawY
                     moved = false
@@ -148,6 +156,7 @@ class PlayerOverlay(context: Context, private val onBack: () -> Unit, private va
                 }
                 MotionEvent.ACTION_UP -> {
                     val dx = e.rawX - x0
+                    if (BuildConfig.DEBUG) Log.i("OrtakIzle", "Kaydırma: dx=${dx.roundToInt()} w=${v.width} moved=$moved")
                     if (abs(dx) > max(dp(56f), v.width / 4)) {
                         v.animate().translationX(sign(dx) * v.width * 1.2f).alpha(0f).setDuration(180)
                             .withEndAction {
@@ -310,7 +319,7 @@ class PlayerOverlay(context: Context, private val onBack: () -> Unit, private va
         tv.animate().alpha(1f).translationX(0f).setDuration(260).setInterpolator(DecelerateInterpolator()).start()
         main.postDelayed({
             tv.animate().alpha(0f).translationX(-dp(30f).toFloat()).setDuration(400).withEndAction { ticker.removeView(tv) }.start()
-        }, (6000L + text.length * 40L).coerceAtMost(12000L))
+        }, (10000L + text.length * 50L).coerceAtMost(16000L)) // okuyup dokunmaya/kaydırmaya vakit kalsın
     }
 
     fun notice(text: String, ms: Long) {
@@ -372,7 +381,159 @@ class PlayerOverlay(context: Context, private val onBack: () -> Unit, private va
         }
     }
 
+    // ------------------------------------------------------------------ kedi tepkisi
+    // Uygulamanın içindeki kısa kedi videosu (ya da resmi) sol üst köşeden (geri düğmesinin
+    // altından) kayarak girer, küçük yuvarlak bir kartta sesli oynar, bitince kayarak çıkar.
+    // Ekranın ortasını ve alttaki altyazıyı kapatmaz. Dokununca ya da kaydırınca kapanır.
+    private var memeCard: View? = null
+    private var memePlayer: MediaPlayer? = null
+    private var memeEnd: Runnable? = null
+
+    fun meme(id: String, img: Boolean, name: String) {
+        if (!Regex("[a-z]{2,20}").matches(id)) return
+        stopMeme()
+        val maxW = (width * 0.26f).roundToInt().coerceIn(dp(130f), dp(220f))
+        val maxH = (height * 0.34f).roundToInt().coerceIn(dp(110f), dp(250f))
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START
+        }
+        val frame = FrameLayout(context).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dp(18f).toFloat()
+                setColor(INK)
+                setStroke(dp(2f), CORAL)
+            }
+            outlineProvider = ViewOutlineProvider.BACKGROUND
+            clipToOutline = true
+            elevation = dp(10f).toFloat()
+        }
+        // Videonun/resmin oranına göre kartın boyu (genişlik sabit, en fazla ekranın yarısı)
+        fun fit(vw: Int, vh: Int) {
+            if (vw <= 0 || vh <= 0) return
+            var w = maxW
+            var h = (w.toFloat() * vh / vw).roundToInt()
+            if (h > maxH) {
+                h = maxH
+                w = (h.toFloat() * vw / vh).roundToInt()
+            }
+            frame.layoutParams = (frame.layoutParams as LinearLayout.LayoutParams).apply {
+                width = w
+                height = h
+            }
+        }
+        card.addView(frame, LinearLayout.LayoutParams(maxW, (maxW * 9f / 16f).roundToInt()))
+        if (img) {
+            val bmp = try {
+                context.assets.open("web/memes/$id.jpg").use { BitmapFactory.decodeStream(it) }
+            } catch (_: Exception) {
+                null
+            } ?: return
+            frame.addView(ImageView(context).apply {
+                setImageBitmap(bmp)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+            }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            fit(bmp.width, bmp.height)
+        } else {
+            val afd = try {
+                context.assets.openFd("web/memes/$id.mp4")
+            } catch (_: Exception) {
+                return
+            }
+            val tv = TextureView(context)
+            tv.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
+                    if (memeCard !== card) return
+                    val mp = MediaPlayer()
+                    memePlayer = mp
+                    try {
+                        mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                        afd.close()
+                        mp.setSurface(Surface(st))
+                        mp.setVolume(0.9f, 0.9f)
+                        mp.setOnVideoSizeChangedListener { _, vw, vh -> fit(vw, vh) }
+                        mp.setOnPreparedListener { it.start() }
+                        mp.setOnCompletionListener { dismissMeme(card) }
+                        mp.setOnErrorListener { _, _, _ ->
+                            dismissMeme(card)
+                            true
+                        }
+                        mp.prepareAsync()
+                    } catch (_: Exception) {
+                        dismissMeme(card)
+                    }
+                }
+
+                override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
+                override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean = true
+                override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
+            }
+            frame.addView(tv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }
+        if (name.isNotBlank()) {
+            card.addView(TextView(context).apply {
+                text = name
+                setTextColor(PAPER)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                setPadding(dp(9f), dp(3f), dp(9f), dp(4f))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(99f).toFloat()
+                    setColor(Color.argb(220, 11, 11, 12))
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6f) })
+        }
+        memeCard = card
+        swipeAway(card, { dismissMeme(card) }) { dismissMeme(card) }
+        addView(card, LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START).apply {
+            leftMargin = dp(14f) + insetL
+            topMargin = dp(72f) + insetT // geri düğmesinin altında
+        })
+        if (BuildConfig.DEBUG) Log.i("OrtakIzle", "Kedi: $id")
+        // Soldan kayarak girer
+        card.alpha = 0f
+        card.translationX = -(maxW + dp(30f)).toFloat()
+        card.animate().alpha(1f).translationX(0f).setDuration(380).setInterpolator(OvershootInterpolator(1.1f)).start()
+        // Resim 3,5 sn; video bitince (en geç 20 sn)
+        val end = Runnable { dismissMeme(card) }
+        memeEnd = end
+        main.postDelayed(end, if (img) 4000L else 20000L)
+    }
+
+    private fun dismissMeme(card: View) {
+        if (memeCard !== card) return
+        memeCard = null
+        memeEnd?.let { main.removeCallbacks(it) }
+        memePlayer?.let {
+            try {
+                it.stop()
+            } catch (_: Exception) {
+            }
+            it.release()
+        }
+        memePlayer = null
+        // Sola kayarak çıkar
+        card.animate().alpha(0f).translationX(-(card.width + dp(30f)).toFloat()).setDuration(300).withEndAction { removeView(card) }.start()
+    }
+
+    private fun stopMeme() {
+        memeCard?.let { c ->
+            memeCard = null
+            removeView(c)
+        }
+        memeEnd?.let { main.removeCallbacks(it) }
+        memePlayer?.let {
+            try {
+                it.stop()
+            } catch (_: Exception) {
+            }
+            it.release()
+        }
+        memePlayer = null
+    }
+
     fun clear() {
+        stopMeme()
         main.removeCallbacksAndMessages(null)
         reacts.removeAllViews()
         ticker.removeAllViews()
