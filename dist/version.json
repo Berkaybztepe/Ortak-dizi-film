@@ -1,7 +1,7 @@
 {
-  "versionCode": 13,
-  "versionName": "2.7.2",
+  "versionCode": 14,
+  "versionName": "2.7.3",
   "apk": "dist/OrtakIzle.apk",
-  "sha256": "b904ed9023a051b390f69e597574555ca070c654484394145680710dfbd237d7",
-  "notes": "269 hareketli çıkartma, tam sayfa çıkartma seçici"
+  "sha256": "1cd545d1dd8e1ce53cdc7969d7a0346a20dbba19fa2ac63da96e69057fafce9c",
+  "notes": "Senin çıkartmaların en başta; 269 hareketli çıkartma"
 }
