@@ -20,7 +20,7 @@ export const BOOT = `(function(){ if (window.top !== window) return;\n${ENGINE}\
 })();`;
 
 // MainActivity.allowedFromPlayer ile aynı
-export const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing', 'drift', 'notice']);
+export const ALLOWED = new Set(['hello', 'engine', 'sync', 'tick', 'nav', 'buffer', 'countdown', 'react', 'invite', 'typing', 'drift', 'notice', 'zones']);
 const NATIVE = ['openPlayer', 'closePlayer', 'toPlayer', 'setPanel', 'setFloatSize', 'setDesktopMode', 'keepScreenOn', 'share', 'startDiscovery', 'stopDiscovery', 'stopHost', 'overlay', 'confirm', 'playerBack', 'checkUpdate', 'installUpdate'];
 
 export async function makeApp(browser, { label, port, brokerWs, video, w = 1280, h = 800, debug = false }) {
@@ -30,16 +30,26 @@ export async function makeApp(browser, { label, port, brokerWs, video, w = 1280,
   const player = await ctx.newPage();
   const log = [];
   const calls = []; // [işlev, argüman] (overlay/confirm için argüman JSON çözülmüş)
+  const posts = []; // oynatıcı sayfasının gönderdiği son mesajlar
   ui.on('pageerror', (e) => log.push('UI hata: ' + e.message));
   player.on('pageerror', (e) => log.push('Oynatıcı hata: ' + e.message));
   await player.addInitScript(BOOT);
   await player.exposeFunction('__toUi', async (raw) => {
     const o = JSON.parse(raw);
+    posts.push(o);
+    if (posts.length > 500) posts.shift();
     if (debug && !['engine', 'drift'].includes(o.t)) console.log('      ', new Date().toISOString().slice(17, 23), label, '→', raw.slice(0, 160));
+    // MainActivity.playerKeys gibi: oynatıcıya gerçek ok tuşu basışı
+    if (o.t === 'input') {
+      calls.push(['input', o]);
+      const key = o.key === 'left' ? 'ArrowLeft' : o.key === 'right' ? 'ArrowRight' : null;
+      if (key) for (let i = 0; i < Math.min(60, o.n || 1); i++) await player.keyboard.press(key).catch(() => {});
+      return;
+    }
     if (!ALLOWED.has(o.t)) return;
     await ui.evaluate((m) => window.OI && OI.fromPlayer(m), o).catch(() => {});
   });
-  const app = { ctx, ui, player, log, calls, label, layout: 'full' };
+  const app = { ctx, ui, player, log, calls, posts, label, layout: 'full' };
   const closed = async () => {
     await player.goto('about:blank');
     await ui.evaluate(() => {
@@ -63,7 +73,7 @@ export async function makeApp(browser, { label, port, brokerWs, video, w = 1280,
       // Testte oynatıcı geçmişi yok: ana ekrana dönülür
       await closed();
     } else if (fn === 'setPanel') {
-      app.layout = arg === 'open' ? 'side' : 'float';
+      app.layout = arg === 'open' ? 'side' : arg === 'type' ? 'type' : 'float';
       await ui.evaluate((m) => OI.setLayout({ mode: m }), app.layout);
     }
   });

@@ -45,6 +45,11 @@
       <div class="marquee">
         <span class="logo"><svg><use href="#i-logo"/></svg></span>
         <h1>Aynı dizi<br><span>aynı saniye</span></h1>
+        <div class="duo" aria-hidden="true">
+          <div class="scr"><i class="bar"><b></b></i><span class="who">Sen</span></div>
+          <div class="link"><span></span><span></span><span></span></div>
+          <div class="scr two"><i class="bar"><b></b></i><span class="who">Kardeşin</span></div>
+        </div>
         <p>Biriniz durdurunca ikinizde de durur. Biriniz sarınca ikiniz de aynı sahneye gider.</p>
       </div>
       <form id="nameForm" autocomplete="off">
@@ -198,7 +203,7 @@
     <div class="grab" id="wGrab" aria-hidden="true"></div>
     <div class="wbar">
       <div class="title"><small id="wPlatform" lang="en">Disney+</small><b id="wTitle">Bölüm seçiliyor</b><span class="lockline" id="wLock" hidden></span></div>
-      <button class="btn sm" id="collapseBtn" title="Sohbeti gizle, sadece video" aria-label="Sohbeti gizle, sadece video"><svg class="i"><use href="#i-collapse"/></svg>Sadece video</button>
+      <button class="btn sm" id="collapseBtn" title="Sohbeti gizle, sadece video" aria-label="Sohbeti gizle, sadece video"><svg class="i"><use href="#i-collapse"/></svg><span class="lbl">Sadece video</span></button>
     </div>
     <div class="sync">
       <div class="tc-big" id="wTc">0:00<span class="of" id="wDur"></span></div>
@@ -222,9 +227,17 @@
   <div class="float" id="vFloat" hidden>
     <div class="pill">
       <div class="people" id="fPeople"></div>
-      <span class="count"><button class="btn icon" id="fOpen" title="Sohbeti aç" aria-label="Sohbeti aç"><svg class="i"><use href="#i-chat"/></svg></button><span class="unread" id="fUnread" hidden>0</span></span>
+      <button class="btn icon quiet" id="fPanel" title="Paneli aç" aria-label="Paneli aç"><svg class="i"><use href="#i-expand"/></svg></button>
+      <span class="count"><button class="btn icon" id="fOpen" title="Mesaj yaz" aria-label="Mesaj yaz"><svg class="i"><use href="#i-chat"/></svg></button><span class="unread" id="fUnread" hidden>0</span></span>
     </div>
     <div class="toasts" id="fToasts"></div>
+  </div>
+
+  <!-- 6. İzlerken yazma çubuğu: video üstte oynamaya devam eder -->
+  <div class="typebar" id="vType" hidden>
+    <button class="btn icon quiet" id="typeClose" type="button" title="Kapat" aria-label="Yazmayı kapat"><svg class="i"><use href="#i-close"/></svg></button>
+    <div class="typeslot" id="typeSlot"></div>
+    <button class="btn icon quiet" id="typeExpand" type="button" title="Sohbeti aç" aria-label="Sohbeti aç"><svg class="i"><use href="#i-expand"/></svg></button>
   </div>
 
   <div class="toasts" id="toasts"></div>

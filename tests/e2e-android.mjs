@@ -228,6 +228,56 @@ step('Masaüstü kimliği');
 const ua = await player.evaluate(() => ({ ua: navigator.userAgent, platform: navigator.platform, mobile: navigator.userAgentData ? navigator.userAgentData.mobile : null }));
 /Windows NT/.test(ua.ua) && ua.platform === 'Win32' && ua.mobile !== true ? pass('Oynatıcı masaüstü Chrome gibi görünüyor (Windows, Win32, mobil değil)') : fail('Masaüstü kimliği: ' + JSON.stringify(ua));
 
+step('Masaüstü sitede dokunmatik gizli, gerçek tuş basışı, dokunuş hâlâ tıklıyor');
+const touch = await player.evaluate(() => ({
+  mtp: navigator.maxTouchPoints,
+  ots: 'ontouchstart' in window,
+  fine: matchMedia('(pointer: fine)').matches,
+  hover: matchMedia('(hover: hover)').matches,
+  coarse: matchMedia('(pointer: coarse)').matches,
+}));
+touch.mtp === 0 && !touch.ots && touch.fine && touch.hover && !touch.coarse
+  ? pass('Site dokunmatik ekran görmüyor, fareli bilgisayar sanıyor ' + JSON.stringify(touch))
+  : fail('Dokunmatik gizlenmedi: ' + JSON.stringify(touch));
+await player.evaluate(() => {
+  window.__keys = [];
+  addEventListener('keydown', (e) => __keys.push(e.key + ':' + e.isTrusted), true);
+  OrtakIzleNative.postMessage(JSON.stringify({ t: 'input', key: 'right', n: 2 }));
+});
+const keys = await waitFor(async () => {
+  const k = await player.evaluate(() => __keys);
+  return k.filter((x) => x === 'ArrowRight:true').length >= 2 ? k : null;
+}, 15000, 700);
+keys ? pass('Oynatıcıya gerçek ok tuşu gitti (sitenin kendi ±10\'u için): ' + keys.join(',')) : fail('Tuş gitmedi: ' + JSON.stringify(await player.evaluate(() => __keys)));
+// Sayfanın ortasına bir düğme koy, ekrana gerçek dokunuşla bas: tıklama gelmeli
+const btnAt = await player.evaluate(() => {
+  const b = document.createElement('button');
+  b.id = '__tapme';
+  b.textContent = 'dokun';
+  b.style.cssText = 'position:fixed;left:30%;top:40%;width:120px;height:80px;z-index:2147483647';
+  window.__taps = [];
+  b.addEventListener('click', (e) => __taps.push('click:' + e.isTrusted));
+  b.addEventListener('pointerdown', (e) => __taps.push('pd:' + e.pointerType));
+  document.body.appendChild(b);
+  const r = b.getBoundingClientRect();
+  return { x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight };
+});
+const pbox = (() => {
+  const l = logLines().filter((x) => /Oynatıcı kutusu: \d+ \d+ \d+ \d+/.test(x)).pop();
+  const m = l && l.match(/Oynatıcı kutusu: (\d+) (\d+) (\d+) (\d+)/);
+  return m ? { x: +m[1], y: +m[2], w: +m[3], h: +m[4] } : null;
+})();
+if (pbox) {
+  await clearDialogs();
+  adb(`shell input tap ${Math.round(pbox.x + btnAt.x * pbox.w)} ${Math.round(pbox.y + btnAt.y * pbox.h)}`);
+  const taps = await waitFor(async () => {
+    const t = await player.evaluate(() => __taps);
+    return t.some((x) => x === 'click:true') ? t : null;
+  }, 15000, 700);
+  taps ? pass('Oynatıcıdaki düğmeye dokununca tıklandı: ' + taps.join(',')) : fail('Dokunuş tıklamadı: ' + JSON.stringify(await player.evaluate(() => __taps)));
+} else fail('Oynatıcı kutusunun yeri günlükte yok');
+await player.evaluate(() => document.getElementById('__tapme')?.remove());
+
 step('Tepki, akan mesaj ve uyarılar (Android katmanı)');
 // Ekrandaki gerçek Android görünümleri (uiautomator) içinde yazı ara
 // Ekrandaki Android görünümleri yerine (video oynarken uiautomator ekranı okuyamıyor ve yavaş
@@ -285,8 +335,9 @@ if (f0) {
   (await ui.visible('#vFloat')) && !(await ui.visible('#vWatch')) ? pass('Sürüklemek sohbeti açmadı') : fail('Sürükleyince sohbet açıldı');
   if (f1) {
     adb(`shell input tap ${f1.x} ${f1.y}`);
-    (await waitFor(() => ui.visible('#vWatch'), 10000, 500)) ? pass('Yeni yerinde dokununca sohbet açıldı') : fail('Dokununca sohbet açılmadı');
-    await ui.click('#collapseBtn');
+    (await waitFor(() => ui.visible('#vType'), 10000, 500)) ? pass('Yeni yerinde dokununca yazma çubuğu açıldı (video üstte)') : fail('Dokununca yazma çubuğu açılmadı');
+    SHOT('8b-yazma-cubugu');
+    await ui.click('#typeClose');
     const f2 = await waitFor(() => {
       const f = floatAt();
       return f && f.n > f1.n ? f : null;
@@ -322,7 +373,7 @@ if (mAt2) {
 } else fail('İkinci akan mesajın yeri bulunamadı');
 
 step('Geri sayım (aynı kareden, aynı anda)');
-await ui.click('#fOpen');
+await ui.click('#fPanel');
 await sleep(2000);
 await ui.click('#tCount');
 const cd = await waitFor(() => events.find((m) => m.t === 'countdown'), 60000, 300);

@@ -58,6 +58,41 @@ window.__resist = 0;
 //   ?unreliable=1: video süresi sonsuz görünür ve çubuk yok (gerçek dakika hiç okunamaz)
 const q = new URLSearchParams(location.search);
 // ?autoplay=1: site sayfa açılınca videoyu kendiliğinden oynatır (kullanıcı dokunmadan)
+// ?controls=1: Disney+ gibi kendi düğmeleri (gizli dururlar, dokununca görünürler): sol üstte geri +
+// başlık, altta çubuk, sağ altta ayar ve tam ekran
+if (q.has('controls')) {
+  const c = document.createElement('div');
+  c.id = 'ctl';
+  c.style.cssText = 'position:fixed;inset:0;pointer-events:none;opacity:0';
+  c.innerHTML = '<button aria-label="Geri" style="position:absolute;left:3%;top:5%;width:48px;height:48px"></button>' +
+    '<h2 style="position:absolute;left:calc(3% + 60px);top:5%;margin:0;color:#fff;font:700 22px sans-serif">The Talkers</h2>' +
+    '<div role="slider" aria-valuenow="0" style="position:absolute;left:3%;right:3%;bottom:22%;height:6px;background:#888"></div>' +
+    '<button aria-label="Ayarlar" style="position:absolute;right:12%;bottom:6%;width:44px;height:44px"></button>' +
+    '<button aria-label="Tam ekran" style="position:absolute;right:3%;bottom:6%;width:44px;height:44px"></button>' +
+    '<button aria-label="Oynat" style="position:absolute;left:calc(50% - 30px);bottom:5%;width:60px;height:60px"></button>';
+  sr.appendChild(c);
+}
+// ?freezeseek=1: Disney+'ın telefondaki hatası gibi: video konumu dışarıdan değiştirilince oynatıcı
+// donar (zaman ilerlemez). Kendi ±10 tuşu kullanılınca düzelir.
+let keySeek = (fn) => fn();
+if (q.has('freezeseek')) {
+  const desc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
+  let frozenAt = null;
+  let viaKey = false;
+  Object.defineProperty(v, 'currentTime', {
+    configurable: true,
+    get() { return frozenAt !== null ? frozenAt : desc.get.call(v); },
+    set(t) { desc.set.call(v, t); frozenAt = viaKey ? null : t; },
+  });
+  keySeek = (fn) => { frozenAt = null; viaKey = true; try { fn(); } finally { viaKey = false; } };
+  window.__frozen = () => frozenAt !== null;
+}
+// Disney+ gibi: sol/sağ ok tuşu 10 sn geri/ileri sarar (yalnızca gerçek tuş basışı)
+addEventListener('keydown', (e) => {
+  if (!e.isTrusted) return;
+  if (e.key === 'ArrowLeft') keySeek(() => (v.currentTime = Math.max(0, v.currentTime - 10)));
+  if (e.key === 'ArrowRight') keySeek(() => (v.currentTime = Math.min(v.duration || 1e9, v.currentTime + 10)));
+});
 if (q.has('autoplay')) v.addEventListener('loadeddata', () => v.play().catch(() => {}), { once: true });
 if (q.has('offset') || q.has('unreliable')) {
   Object.defineProperty(v, 'duration', { get: () => Infinity });

@@ -181,13 +181,43 @@ class PlayerOverlay(context: Context, private val onBack: () -> Unit, private va
         back.visibility = if (show) View.VISIBLE else View.GONE
     }
 
+    private var insetL = 0
+    private var insetT = 0
+    private var spotX: Float? = null
+    private var spotY: Float? = null
+
     /** Geri düğmesinin yeri: sistem çubukları/çentik kadar içeride */
     fun setInsets(left: Int, top: Int) {
-        (back.layoutParams as LayoutParams).apply {
-            leftMargin = dp(12f) + left
-            topMargin = dp(12f) + top
-        }
-        back.requestLayout()
+        insetL = left
+        insetT = top
+        placeBack()
+    }
+
+    /** Sitenin düğmelerine değmeyen yer (oynatıcının oranı, düğmenin ortası); null: sol üst */
+    fun setBackSpot(fx: Float?, fy: Float?) {
+        spotX = fx?.takeIf { it in 0f..1f }
+        spotY = fy?.takeIf { it in 0f..1f }
+        placeBack()
+    }
+
+    private fun placeBack() {
+        val size = dp(46f)
+        val minL = dp(12f) + insetL
+        val minT = dp(12f) + insetT
+        val fx = spotX
+        val fy = spotY
+        val l = if (fx != null && width > 0) maxOf(minL, (fx * width).roundToInt() - size / 2) else minL
+        val t = if (fy != null && height > 0) maxOf(minT, (fy * height).roundToInt() - size / 2) else minT
+        val lp = back.layoutParams as LayoutParams
+        if (lp.leftMargin == l && lp.topMargin == t) return
+        lp.leftMargin = l
+        lp.topMargin = t
+        back.layoutParams = lp
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (spotX != null || spotY != null) post { placeBack() }
     }
 
     fun react(emoji: String, name: String?) {

@@ -197,6 +197,8 @@
       const text = els.input.value.trim();
       if (!text) return;
       if (!client.send({ t: 'chat', text })) toast('Bağlantı bekleniyor; bağlanınca gönderilecek.');
+      // Yazma çubuğundayken kendi mesajın da videonun üstünden aksın (gittiğini gör)
+      else if (ui.layout === 'type') overlay({ type: 'msg', name: 'Sen', text });
       els.input.value = '';
       typingSent = 0;
     });
@@ -614,6 +616,7 @@
       native.call('setDesktopMode', !!settings.desktop);
       native.call('openPlayer', url);
       ui.playerOpen = true;
+      lastSpots = '';
       ui.engine = null;
       ui.view = 'watch';
       native.call('keepScreenOn', !!settings.awake);
@@ -649,6 +652,7 @@
         noteArrival(m);
         renderWatch();
         guardLock(m);
+        placeButtons();
         break;
       case 'notice':
         if (m.blocked) {
@@ -658,6 +662,12 @@
             { action: { label: 'Tamam', run: () => {} }, ms: 30000 }
           );
         } else if (m.text) toast(m.text);
+        break;
+      case 'zones':
+        noteZones(m);
+        break;
+      case 'diag':
+        if (ui.diagWait && typeof m.text === 'string') ui.diagWait(m.text.slice(0, 18000));
         break;
       case 'drift':
       case 'sync':
@@ -673,6 +683,121 @@
         if (m.t === 'nav') renderNow();
         break;
     }
+  }
+
+  // ---------------------------------------------------------------- sorun raporu
+  // İzlerken durum yazısına dokununca: oynatıcı sayfasının durumu + son olaylar paylaşılır
+  // (WhatsApp vb. ile gönderilebilir). Şifre, oda kodu, mesaj içeriği yazılmaz.
+  function askReport() {
+    if (ENV !== 'app' || !ui.playerOpen) return;
+    native.call('confirm', {
+      id: 'diag',
+      title: 'Sorun raporu gönderilsin mi?',
+      text: 'Oynatıcının durumu ve son olaylar bir metin olarak paylaşılır. Mesajlar, şifre ve oda kodu eklenmez.',
+      ok: 'Paylaş',
+      cancel: 'Vazgeç',
+    });
+  }
+  function sendReport() {
+    const head = () => {
+      const v = native.json('appVersion') || {};
+      const e = ui.engine || {};
+      return [
+        `Ortak İzle ${v.name || '?'} (${v.code || '?'})`,
+        `bağlantı=${client.state} oda=${client.config ? (client.config.code ? 'kod' : 'adres') : 'yok'} kişi=${client.members.length} yerleşim=${ui.layout} kutu=${JSON.stringify(ui.playerBox || null)}`,
+        `motor=${JSON.stringify({ platform: e.platform, hasVideo: e.hasVideo, time: e.time, paused: e.paused, exact: e.exact, mode: e.mode, watching: e.watching, err: e.err, leader: e.leader })}`,
+      ].join('\n');
+    };
+    let done = false;
+    const finish = (text) => {
+      if (done) return;
+      done = true;
+      ui.diagWait = null;
+      native.call('share', `${head()}\n${text || '(oynatıcı sayfası cevap vermedi)'}`);
+    };
+    ui.diagWait = finish;
+    native.call('toPlayer', { t: 'cmd', cmd: 'diag' });
+    setTimeout(() => finish(null), 2500);
+  }
+
+  // ---------------------------------------------------------------- katman düğmelerinin yeri
+  // Oynatıcı sayfası sitenin düğmelerinin, çubuğunun, başlığının hangi ızgara hücrelerinde olduğunu
+  // bildirir. Geri düğmesi (sol) ve sohbet düğmesi (sağ) bunlara değmeyen bir yere konur. Bir
+  // platformda öğrenilen yerler (yatay/dikey ayrı) hatırlanır: bir dahaki açılışta düğmeler
+  // site düğmelerini göstermeden önce de doğru yerde durur.
+  // Ekranın en/boy oranı da anahtarda: aynı yönde farklı biçimdeki ekranda düğmeler başka yerdedir
+  const ZKEY = (platform, aspect) => `oi.zones.${platform}.${(Math.round(aspect * 4) / 4).toFixed(2)}`;
+  function storedZones(platform, aspect) {
+    try {
+      const o = JSON.parse(localStorage.getItem(ZKEY(platform, aspect)) || 'null');
+      if (o && Date.now() - o.at < 14 * 86400000 && typeof o.bits === 'string') return o;
+    } catch {}
+    return null;
+  }
+  function noteZones(m) {
+    if (!(m.cols > 0 && m.rows > 0 && m.cols * m.rows <= 4096) || typeof m.bits !== 'string' || m.bits.length !== m.cols * m.rows || /[^01]/.test(m.bits)) return;
+    const platform = ui.engine?.platform || 'site';
+    const aspect = +m.aspect > 0 ? +m.aspect : m.land ? 2 : 0.5;
+    const old = storedZones(platform, aspect);
+    let bits = m.bits;
+    if (old && old.cols === m.cols && old.rows === m.rows) bits = [...bits].map((b, i) => (b === '1' || old.bits[i] === '1' ? '1' : '0')).join('');
+    ui.zones = { cols: m.cols, rows: m.rows, bits, land: !!m.land, aspect, platform };
+    try {
+      localStorage.setItem(ZKEY(platform, aspect), JSON.stringify({ cols: m.cols, rows: m.rows, bits, at: Date.now() }));
+    } catch {}
+    placeButtons();
+  }
+  // Izgarada (x0,y0)-(x1,y1) dikdörtgeni (oynatıcı kutusunun dp'si cinsinden) boş mu?
+  function zoneFree(z, box, x0, y0, x1, y1) {
+    const c0 = Math.max(0, Math.floor((x0 / box.w) * z.cols));
+    const c1 = Math.min(z.cols - 1, Math.floor((x1 / box.w) * z.cols));
+    const r0 = Math.max(0, Math.floor((y0 / box.h) * z.rows));
+    const r1 = Math.min(z.rows - 1, Math.floor((y1 / box.h) * z.rows));
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (z.bits[r * z.cols + c] === '1') return false;
+    return true;
+  }
+  function pickSpots(z, box) {
+    const M = 10;
+    const B = 50; // geri düğmesi (46) + pay
+    let back = null;
+    // Önce sol üst, sonra sol kenar boyunca aşağı, sonra biraz içeri
+    for (const x of [M, M + 58, M + 116]) {
+      for (let y = M; y + B <= box.h * 0.88 && !back; y += 6) if (zoneFree(z, box, x, y, x + B, y + B)) back = [x + B / 2, y + B / 2];
+      if (back) break;
+    }
+    // Sohbet düğmesi sağ kenarda: dikeyde alttan, yatayda ortadan başlayıp en yakın boş yer
+    const half = 39;
+    const want = box.h * (z.land ? 0.5 : 0.93);
+    let chat = null;
+    for (let d = 0; d < box.h && chat === null; d += 6) {
+      for (const cy of d ? [want + d, want - d] : [want]) {
+        if (cy - half < M || cy + half > box.h - M) continue;
+        if (zoneFree(z, box, box.w - M - 64, cy - half + 12, box.w - M, cy + half - 12)) {
+          chat = cy;
+          break;
+        }
+      }
+    }
+    return { back: back && [back[0] / box.w, back[1] / box.h], chat: chat === null ? null : chat / box.h };
+  }
+  let lastSpots = '';
+  function placeButtons() {
+    const box = ui.playerBox;
+    if (ENV !== 'app' || !ui.playerOpen || !box || !box.w || !box.h) return;
+    const land = box.w > box.h;
+    const aspect = box.w / box.h;
+    const same = (a) => Math.abs(Math.round(a * 4) / 4 - Math.round(aspect * 4) / 4) < 0.01;
+    let z = ui.zones && ui.zones.land === land && same(ui.zones.aspect) && ui.zones.platform === (ui.engine?.platform || 'site') ? ui.zones : null;
+    if (!z && ui.engine?.platform) {
+      const o = storedZones(ui.engine.platform, aspect);
+      if (o) z = { ...o, land };
+    }
+    if (!z) return;
+    const spots = pickSpots(z, box);
+    const key = JSON.stringify(spots);
+    if (key === lastSpots) return;
+    lastSpots = key;
+    overlay({ type: 'spots', back: spots.back, chat: spots.chat });
   }
 
   // ---------------------------------------------------------------- bağlantı
@@ -790,13 +915,18 @@
     document.body.className = ui.view === 'watch' ? ui.layout : '';
     const watch = ui.view === 'watch';
     const float = watch && ui.layout === 'float';
+    const typing = watch && ui.layout === 'type';
     $('vWelcome').hidden = ui.view !== 'welcome';
     $('topbar').hidden = ui.view !== 'lobby';
     $('vLobby').hidden = ui.view !== 'lobby';
     $('tabs').hidden = ui.view !== 'lobby';
-    $('vWatch').hidden = !watch || float;
+    $('vWatch').hidden = !watch || float || typing;
     $('vFloat').hidden = !float;
-    $('toasts').hidden = float;
+    $('vType').hidden = !typing;
+    $('toasts').hidden = float || typing;
+    // Yazma çubuğunda sohbetin yalnızca yazı kutusu kullanılır
+    const formHome = typing ? $('typeSlot') : chat.node;
+    if (chat.els.form.parentNode !== formHome) formHome.append(chat.els.form);
 
     // Sohbeti doğru yere taşı
     const slot = watch ? $('watchChatSlot') : $('lobbySide');
@@ -938,6 +1068,7 @@
           {
             class: `pf${off ? ' off' : ''}`,
             'data-p': p.id,
+            'data-mark': p.name.replace(/[^A-Za-z]/g, '').slice(0, 1),
             type: 'button',
             'aria-disabled': off ? 'true' : null,
             onclick: () => (locked() && adminWatching() ? lockedToast() : off ? toast('Bu platform uygulama içinde oynatmaya izin vermiyor.') : openUrl(p.url)),
@@ -1032,8 +1163,17 @@
     let cls = '';
     let txt = 'Video bekleniyor';
     if (client.state !== 'bağlı') {
-      cls = 'bad';
-      txt = 'Bağlantı yok';
+      // Neden bağlı değiliz: hiç odaya girilmedi mi, bağlanmaya mı çalışılıyor, koptu mu?
+      if (!client.config) {
+        cls = '';
+        txt = 'Odada değilsin · tek başına';
+      } else if (client.state === 'bağlanıyor') {
+        cls = 'warn';
+        txt = 'Odaya bağlanıyor…';
+      } else {
+        cls = 'bad';
+        txt = 'Bağlantı koptu · yeniden deneniyor';
+      }
     } else if (!e?.hasVideo) {
       cls = '';
       txt = e?.watching ? 'Video yükleniyor' : 'Bölüm seç';
@@ -1241,7 +1381,21 @@
     });
   }
   $('collapseBtn').addEventListener('click', () => native.call('setPanel', 'closed'));
-  $('fOpen').addEventListener('click', () => native.call('setPanel', 'open'));
+  // Sohbet düğmesi: video tam ekranda kalır, altta yazma çubuğu açılır (yazarken izlenir)
+  $('fOpen').addEventListener('click', () => {
+    // Çubuğu hemen göster ki yazı kutusu odaklanabilsin (klavye dokunuşla birlikte açılır)
+    ui.layout = 'type';
+    render();
+    chat.els.input.focus();
+    native.call('setPanel', 'type');
+  });
+  $('fPanel').addEventListener('click', () => native.call('setPanel', 'open'));
+  $('typeClose').addEventListener('click', () => {
+    chat.els.input.blur();
+    native.call('setPanel', 'closed');
+  });
+  $('typeExpand').addEventListener('click', () => native.call('setPanel', 'open'));
+  $('wChip').addEventListener('click', askReport);
   // Panel kaydırılarak kapanır (yanda sağa, altta aşağı): "Sadece video" ile aynı
   swipe($('vWatch'), {
     axis: '+x',
@@ -1272,6 +1426,13 @@
   window.OI = {
     fromPlayer(m) {
       fromPlayer(typeof m === 'string' ? JSON.parse(m) : m);
+    },
+    // Oynatıcı kutusunun boyutu (dp): katman düğmelerinin yeri buna göre seçilir
+    setPlayerBox(b) {
+      const o = typeof b === 'string' ? JSON.parse(b) : b;
+      ui.playerBox = o && o.w > 0 && o.h > 0 ? { w: +o.w, h: +o.h } : null;
+      lastSpots = '';
+      placeButtons();
     },
     // Sohbet düğmesi ekranın alt yarısındaysa bildirimler onun üstünde açılır
     setFloatUp(up) {
@@ -1311,6 +1472,12 @@
     // Geri: sol üstteki düğme ya da telefonun geri hareketi. Bölümden kazara çıkılmasın.
     onBack() {
       if (!ui.playerOpen) return;
+      // Yazma çubuğu açıksa geri tuşu yalnızca onu kapatır
+      if (ui.layout === 'type') {
+        chat.els.input.blur();
+        native.call('setPanel', 'closed');
+        return;
+      }
       const a = adminWatching();
       if (locked() && a) {
         overlay({ type: 'notice', text: `Bölümü ${a.name} yönetiyor · ${a.name} çıkınca sen de çıkabilirsin`, ms: 4000 });
@@ -1331,6 +1498,7 @@
       native.call('playerBack');
     },
     onConfirm(id, ok) {
+      if (id === 'diag' && ok) return sendReport();
       if (id !== 'exit' || !ok) return;
       // Önce herkeste durdur (sayfa kapanmadan), sonra çık
       native.call('toPlayer', { t: 'cmd', cmd: 'pauseAll' });

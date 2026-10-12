@@ -366,6 +366,31 @@
     let seekFrom = null;
     let relWarned = false;
     let lastSeekAt = 0;
+    // Tanı günlüğü: "Sorun raporu" ile kullanıcı bize gönderebilir (son 200 olay)
+    const LOG = [];
+    const t0 = Date.now();
+    function log(text) {
+      LOG.push(`${((Date.now() - t0) / 1000).toFixed(1)} ${text}`);
+      if (LOG.length > 200) LOG.shift();
+    }
+    // Uygulamada oynatıcıya gerçek tuş basışı gönderilebilir (Android, sitenin kendi ±10'u)
+    const canKeys = !visual;
+    // Videonun konumunu doğrudan değiştirmek oynatıcıyı donduruyor mu? Disney+ telefonda,
+    // yüklenmemiş bir yere sarınca donuyor: oraya sitenin kendi ±10 tuşlarıyla gideriz, yüklü
+    // kısımda kalan küçük farkı doğrudan kapatırız. Bir kez donma görülürse hep tuşla.
+    const keysForFar = canKeys && PLATFORM === 'Disney+';
+    let seekViaKeys = false;
+    function loaded(t) {
+      if (!video) return false;
+      const b = video.buffered;
+      for (let i = 0; i < b.length; i++) if (t >= b.start(i) + 0.2 && t <= b.end(i) - 0.5) return true;
+      return false;
+    }
+    let stallSince = 0;
+    let stallLastT = -1;
+    let stallFixes = 0;
+    let lastProgSeekAt = 0;
+    let keysUntil = 0; // bu ana kadar gelen sarma olayları bizim tuş basışımızın yankısı
     let lastChangeAt = 0; // son durum değişikliği: hemen sonrasında durum daha sık bildirilir
     let lastTickAt = 0;
     let lastTickPaused = null;
@@ -551,8 +576,14 @@
 
     function onVideoEvent(e) {
       const t = e.type;
+      if (t !== 'timeupdate') log(`video ${t} t=${video.currentTime.toFixed(2)} paused=${video.paused} rs=${video.readyState}`);
       if (t === 'timeupdate') {
         if (!video.seeking) lastPlayhead = video.currentTime;
+        return;
+      }
+      if ((t === 'seeking' || t === 'seeked') && Date.now() < keysUntil) {
+        if (t === 'seeking') lastSeekAt = Date.now();
+        seekFrom = null;
         return;
       }
       if (t === 'seeking') {
@@ -706,7 +737,7 @@
 
     // Uygulanan durum tuttu mu? Tutmadıysa (en fazla 3 kez) yeniden uygula
     function reassert() {
-      if (!applied || !video || !roomState) return;
+      if (!applied || !video || !roomState || !connected()) return;
       if (applied.tries >= 3) return;
       applied.tries++;
       applied.until = Date.now() + RESIST_MS;
@@ -725,7 +756,7 @@
     function scheduleVerify() {
       clearTimeout(verifyTimer);
       verifyTimer = setTimeout(function check() {
-        if (!applied || !video || starting || holding) return;
+        if (!applied || !video || starting || holding || !connected()) return;
         if (Date.now() - lastLocal < 1500) return; // kullanıcı bu arada kendisi bir şey yaptı
         if (video.paused !== applied.paused) {
           reassert();
@@ -758,7 +789,30 @@
       playVideo(onBlocked);
     }
 
+    // Sitenin kendi ±10 sn tuşuyla sar (gerçek tuş basışı, Android): n adım. Kalan küçük farkı
+    // hız ayarı kapatır.
+    function seekByKeys(delta, ours) {
+      const n = Math.round(delta / 10);
+      log(`keys ${n > 0 ? '→' : '←'} x${Math.abs(n)} (fark ${delta.toFixed(1)})`);
+      if (!n) return false;
+      lastProgSeekAt = Date.now();
+      // Senkron için yaptığımız sarma diğerlerine "sardı" diye gitmesin
+      if (ours) keysUntil = Date.now() + 2500 + Math.abs(n) * 200;
+      post({ t: 'input', key: n > 0 ? 'right' : 'left', n: Math.min(60, Math.abs(n)) });
+      return true;
+    }
+
     function seekTo(t) {
+      lastProgSeekAt = Date.now();
+      const keys = seekViaKeys || (keysForFar && !loaded(t) && Math.abs(t - video.currentTime) >= 5);
+      log(`seek ${video.currentTime.toFixed(2)} → ${t.toFixed(2)}${keys ? ' (tuşla)' : ''}`);
+      if (keys && seekByKeys(t - video.currentTime, true)) return;
+      if (seekViaKeys) return; // 5 sn'den az: hız ayarı kapatır
+      // Yüklenmemiş yere doğrudan sarma donduruyor: oynatıcı yükleyene kadar bekle (ince ayar sonra)
+      if (keysForFar && !loaded(t)) {
+        log('hedef henüz yüklenmedi, beklenecek');
+        return;
+      }
       if (PLATFORM === 'Netflix') {
         window.dispatchEvent(new CustomEvent('ortak-izle-netflix-seek', { detail: Math.round(t * 1000) }));
         return;
@@ -833,8 +887,32 @@
       applyState(roomState, true);
     }
 
+    // Odaya bağlı değilken motor videoya hiç dokunmaz: yarım kalan bekleme, birlikte başlama,
+    // "uygulanan durumu koru" denetimi ve hız ayarı bırakılır. Kullanıcı sitenin kendi
+    // düğmeleriyle (oynat, durdur, ±10, çubuk) serbestçe oynatır.
+    function standDown() {
+      if (starting) {
+        clearStart();
+        stage.clearTap();
+      }
+      if (holding) {
+        holding = false;
+        stage.note(null);
+      }
+      applied = null;
+      clearTimeout(verifyTimer);
+      clearTimeout(userPlay);
+      userPlay = 0;
+      if (pending) clearTimeout(pending.timer);
+      pending = null;
+      expect.paused = null;
+      expect.seek = null;
+      if (video && rateSet !== null) restoreRate();
+    }
+
     // Başkası yükleniyorsa bekle, bitince devam et
     function updateHold() {
+      if (!connected()) return standDown();
       const waitingFor = members.filter(
         (m) => m.id !== me?.id && m.buffering && m.url && relatedContent(m.url)
       );
@@ -979,7 +1057,8 @@
         } catch {}
       }
       const a = Math.abs(err);
-      if (a > (rateBroken ? 0.4 : 1)) {
+      // Tuşla sarılan platformda (10 sn adım) 6 sn'ye kadarki farkı hız kapatır
+      if (a > (seekViaKeys ? 6 : rateBroken ? 0.4 : 1)) {
         if (now - lastSteerSeek > 4000) {
           lastSteerSeek = now;
           restoreRate();
@@ -1001,7 +1080,8 @@
         return;
       }
       correcting = true;
-      const r = Math.round((1 + clamp(err * 0.6, -0.1, 0.1)) * 1000) / 1000;
+      const lim = seekViaKeys && a > 1 ? 0.25 : 0.1;
+      const r = Math.round((1 + clamp(err * 0.6, -lim, lim)) * 1000) / 1000;
       if (r !== rateSet) {
         try {
           video.playbackRate = r;
@@ -1058,6 +1138,7 @@
           members = m.room?.members || [];
           roomState = m.room?.state || null;
           if (connected() && !was) joined(m.room?.lastAction);
+          else if (!connected()) standDown();
           updateHold();
           break;
         }
@@ -1209,7 +1290,12 @@
         const max = Number.isFinite(video.duration) ? Math.max(0, video.duration - 1) : Infinity;
         expect.seek = null;
         applied = null;
-        seekTo(Math.min(max, Math.max(0, video.currentTime + d)));
+        log(`cmd seekBy ${d}`);
+        // Sitenin kendi ±10'u varsa onu kullan (oynatıcı kendi sarar, donmaz)
+        if ((seekViaKeys || keysForFar) && Math.abs(d) >= 5) seekByKeys(d, false);
+        else seekTo(Math.min(max, Math.max(0, video.currentTime + d)));
+      } else if (cmd === 'diag') {
+        post({ t: 'diag', text: diagnose() });
       } else if (cmd === 'countdown') {
         if (!video) return notify('Önce bir bölüm aç.');
         clearStart();
@@ -1326,6 +1412,132 @@
     }
 
     addEventListener('pagehide', () => setBuffering(false));
+
+    // Donma bekçisi: oynuyor görünüp ilerlemeyen video (sarmadan sonra oynatıcı takıldıysa)
+    // önce durdur-oynat ile, olmazsa sitenin kendi ±10 tuşlarıyla (ileri+geri) kurtarılır. Doğrudan
+    // konum değiştirmek bu platformda donmaya yol açtıysa bundan sonra sarmalar tuşla yapılır.
+    setInterval(() => {
+      if (!video || video.paused || video.ended || starting || holding) {
+        stallSince = 0;
+        return;
+      }
+      const ct = video.currentTime;
+      const step = ct - stallLastT;
+      stallLastT = ct;
+      // İlerleme sayılan: doğal akış (saniyede ~1 sn). Sarmanın yarattığı sıçrama ilerleme değildir.
+      if (step > 0.05 && step < 2.5) {
+        stallSince = 0;
+        if (stallFixes && Date.now() - lastProgSeekAt > 15000) stallFixes = 0;
+        return;
+      }
+      if (!stallSince) stallSince = Date.now();
+      const stuck = Date.now() - stallSince;
+      if (stuck < 3500) return;
+      // Sarmadan bağımsız takılma (yavaş internet) oynatıcının işidir: karışma
+      if (Date.now() - lastProgSeekAt > 20000) {
+        if (stuck < 4600) log(`takılma (sarma yok) rs=${video.readyState}`);
+        return;
+      }
+      stallSince = Date.now();
+      stallFixes++;
+      log(`donma ${(stuck / 1000).toFixed(1)} sn, kurtarma ${stallFixes} rs=${video.readyState}`);
+      if (canKeys && !seekViaKeys && Date.now() - lastProgSeekAt < 20000) {
+        seekViaKeys = true;
+        log('bu platformda sarma artık sitenin tuşlarıyla');
+      }
+      if (stallFixes === 1) {
+        // Durdur-oynat: yankıları bizim (diğerlerine "durdurdu" gitmez)
+        suppressUntil = Date.now() + 1500;
+        progPause();
+        setTimeout(() => video && progPlay(() => {}), 250);
+      } else if (stallFixes <= 3 && canKeys) {
+        // Oynatıcının kendi sarması (10 sn ileri, sonra geri): kendi yükleyicisini yeniden başlatır
+        post({ t: 'input', key: 'right', n: 1 });
+        setTimeout(() => post({ t: 'input', key: 'left', n: 1 }), 900);
+      } else if (stallFixes === 4) {
+        notify('Video takıldı gibi. Oynatıcının kendi düğmesiyle biraz ileri/geri sarmayı deneyin.');
+      }
+    }, 1000);
+
+    // Sorun raporu: sayfadaki oynatıcı düğmeleri, video durumu ve son olaylar
+    function diagnose() {
+      const out = [];
+      out.push(`platform=${PLATFORM} url=${location.href.slice(0, 120)}`);
+      out.push(`ua=${navigator.userAgent}`);
+      out.push(`touch=${navigator.maxTouchPoints} ontouchstart=${'ontouchstart' in window} hover=${matchMedia('(hover: hover)').matches} fine=${matchMedia('(pointer: fine)').matches}`);
+      out.push(`viewport=${innerWidth}x${innerHeight} dpr=${devicePixelRatio}`);
+      out.push(`connected=${connected()} seekViaKeys=${seekViaKeys} uiOffset=${uiOffset} mode=${video ? syncMode() : '-'}`);
+      if (video) {
+        const b = [];
+        for (let i = 0; i < video.buffered.length; i++) b.push(`${video.buffered.start(i).toFixed(1)}-${video.buffered.end(i).toFixed(1)}`);
+        out.push(`video t=${video.currentTime.toFixed(2)} dur=${video.duration} paused=${video.paused} rs=${video.readyState} ns=${video.networkState} rate=${video.playbackRate} buf=[${b.join(' ')}] content=${contentTime()}`);
+        const vids = [...allVideos(document)].length;
+        out.push(`videos=${vids} id=${video.id} cls=${String(video.className).slice(0, 60)}`);
+      }
+      const seen = new Set();
+      let n = 0;
+      for (const el of deepElements(document, 'button, [role="button"], [role="slider"], [aria-label], progress-bar, quick-rewind, quick-fast-forward, toggle-play-pause, toggle-fullscreen')) {
+        const r = el.getBoundingClientRect();
+        if (r.width < 2 || r.height < 2) continue;
+        const desc = `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''} role=${el.getAttribute('role') || ''} aria=${(el.getAttribute('aria-label') || '').slice(0, 40)} cls=${String(el.className || '').slice(0, 40)} @${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)} op=${getComputedStyle(el).opacity} pe=${getComputedStyle(el).pointerEvents}`;
+        if (seen.has(desc)) continue;
+        seen.add(desc);
+        out.push('  ' + desc);
+        if (++n >= 60) break;
+      }
+      out.push('--- olaylar');
+      out.push(...LOG.slice(-120));
+      return out.join('\n');
+    }
+
+    // Sitenin kendi düğmelerinin yerleri (uygulamada): geri ve sohbet düğmeleri bunların üstüne
+    // gelmesin diye ekran ızgaraya bölünür, düğme/çubuk/başlık olan hücreler işaretlenir. Gizli
+    // (saydam) duran oynatıcı düğmeleri de sayılır; sonradan görünenler bir süre hatırlanır.
+    if (!visual) {
+      const COLS = 32;
+      const ROWS = 20;
+      const seen = new Map(); // hücre → son görülme
+      const KEEP = 5 * 60000;
+      const SEL = 'button, [role="button"], [role="slider"], [role="progressbar"], input, select, a[href], h1, h2, h3, [aria-label]';
+      let lastZones = '';
+      let lastOrient = '';
+      setInterval(() => {
+        if (!video || !watchingNow()) return;
+        const vw = innerWidth;
+        const vh = innerHeight;
+        if (!vw || !vh) return;
+        const orient = vw > vh ? 'y' : 'd';
+        if (orient !== lastOrient) {
+          seen.clear(); // ekran döndü: yerler değişti
+          lastOrient = orient;
+        }
+        const now = Date.now();
+        let n = 0;
+        for (const el of deepElements(document, SEL)) {
+          if (++n > 1500) break;
+          if (el === video || el.tagName === 'VIDEO') continue;
+          const r = el.getBoundingClientRect();
+          if (r.width < 4 || r.height < 4) continue;
+          if (r.right <= 0 || r.bottom <= 0 || r.left >= vw || r.top >= vh) continue;
+          // Ekranın büyük kısmını kaplayan kutular (tıklama yakalayıcı katmanlar) düğme değildir
+          if (r.width * r.height > vw * vh * 0.12) continue;
+          const c0 = Math.max(0, Math.floor((r.left / vw) * COLS));
+          const c1 = Math.min(COLS - 1, Math.floor(((r.right - 1) / vw) * COLS));
+          const r0 = Math.max(0, Math.floor((r.top / vh) * ROWS));
+          const r1 = Math.min(ROWS - 1, Math.floor(((r.bottom - 1) / vh) * ROWS));
+          for (let y = r0; y <= r1; y++) for (let x = c0; x <= c1; x++) seen.set(y * COLS + x, now);
+        }
+        let bits = '';
+        for (let i = 0; i < COLS * ROWS; i++) {
+          const at = seen.get(i);
+          if (at && now - at > KEEP) seen.delete(i);
+          bits += at && now - at <= KEEP ? '1' : '0';
+        }
+        if (bits === lastZones) return;
+        lastZones = bits;
+        post({ t: 'zones', cols: COLS, rows: ROWS, bits, land: vw > vh, aspect: Math.round((vw / vh) * 10) / 10 });
+      }, 2000);
+    }
 
     post({ t: 'hello' });
 

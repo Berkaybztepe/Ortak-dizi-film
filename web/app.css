@@ -395,6 +395,35 @@ body.side .grab::after { content: ""; position: absolute; left: 4px; top: 50%; w
   body.side .composer .btn.primary, body.bottom .composer .btn.primary { width: 40px; min-height: 40px; }
   body.side .msgs, body.bottom .msgs { padding: 6px 12px 8px 16px; }
 }
+/* Telefon yatay: daha da sıkı (mesajlara yer) */
+@media (max-height: 560px) {
+  body.side .wbar .lockline, body.bottom .wbar .lockline { display: none; }
+  body.side .wbar .btn .lbl, body.bottom .wbar .btn .lbl { display: none; }
+  body.side .wbar .btn, body.bottom .wbar .btn { width: 34px; padding: 0; }
+  body.side .wbar .title small, body.bottom .wbar .title small { font-size: 10px; }
+  body.side .wbar .title b, body.bottom .wbar .title b { font-size: 14px; }
+  body.side .tc-big, body.bottom .tc-big { font-size: 18px; }
+  body.side .sync, body.bottom .sync { padding: 5px 9px; margin: 2px 0 2px 12px; }
+  body.side .chip, body.bottom .chip { height: 20px; font-size: 10.5px; }
+  body.side .tplay, body.bottom .tplay { width: 40px; min-height: 40px; height: 40px; }
+  body.side .tplay svg, body.bottom .tplay svg { width: 19px; height: 19px; }
+  body.side .tskip, body.bottom .tskip { width: 34px; min-height: 34px; height: 34px; }
+  body.side .tskip svg, body.bottom .tskip svg { width: 21px; height: 21px; }
+  body.side .tools .btn, body.bottom .tools .btn { min-height: 28px; font-size: 11px; }
+  body.side .tools .btn svg, body.bottom .tools .btn svg { width: 14px; height: 14px; }
+  body.side .tools, body.bottom .tools { padding: 0 10px 4px 14px; }
+  body.side .msgs, body.bottom .msgs { gap: 2px; font-size: 13.5px; }
+  body.side .msg .meta, body.bottom .msg .meta { margin: 6px 0 2px 4px; font-size: 10.5px; }
+  body.side .msg .meta b, body.bottom .msg .meta b { font-size: 12px; }
+  body.side .msg .bubble, body.bottom .msg .bubble { padding: 6px 11px; }
+  body.side .sys, body.bottom .sys { padding: 6px 0 2px; font-size: 10.5px; }
+  body.side .empty-chat, body.bottom .empty-chat { font-size: 12px; }
+  body.side .empty-chat b, body.bottom .empty-chat b { font-size: 14px; }
+  body.side .typing, body.bottom .typing { min-height: 14px; font-size: 10.5px; }
+  body.side .reacts button, body.bottom .reacts button { height: 30px; font-size: 16px; flex-basis: 32px; }
+  body.side .composer .input, body.bottom .composer .input { min-height: 36px; }
+  body.side .composer .btn.primary, body.bottom .composer .btn.primary { width: 36px; min-height: 36px; }
+}
 /* Klavye açıkken (çok kısa panel) yalnızca sohbet: video yanda/üstte oynamaya devam eder */
 @media (max-height: 300px) {
   body.side .sync, body.side .transport, body.side .tools, body.side .reacts,
@@ -411,6 +440,16 @@ body.side .grab::after { content: ""; position: absolute; left: 4px; top: 50%; w
 .pill .unread { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
   background: var(--accent); color: var(--on-accent); font: 800 11px/20px var(--sans); text-align: center; }
 .pill .btn.icon { width: 42px; min-height: 42px; background: var(--accent); color: var(--on-accent); }
+
+/* ---------------------------------------------------------------- izlerken yazma çubuğu */
+body.type { background: var(--surface); }
+.typebar { position: fixed; inset: 0; display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: var(--surface); }
+.typebar .typeslot { flex: 1; min-width: 0; }
+.typebar .composer { padding: 0; }
+.typebar .composer .input { min-height: 42px; }
+.typebar .composer .btn.primary { width: 42px; min-height: 42px; }
+.typebar > .btn.icon { width: 40px; min-height: 40px; flex: none; color: var(--text-dim); }
+.pill #fPanel { width: 34px; min-height: 34px; background: transparent; color: var(--text-dim); }
 
 /* ---------------------------------------------------------------- bildirimler */
 .toasts { position: fixed; left: 50%; bottom: calc(24px + var(--safe-b)); transform: translateX(-50%); display: flex;
@@ -465,3 +504,78 @@ body.float .toast { width: 320px; }
 .no-flex-gap .ticket .actions > *, .no-flex-gap .choice .actions > * { margin-right: 8px; }
 .no-flex-gap .section > * + *, .no-flex-gap .choice > * + *, .no-flex-gap .lobby .main > * + *, .no-flex-gap .ticket .stub > * + *,
 .no-flex-gap .ticket .tear > * + *, .no-flex-gap #tkAddrs > * + *, .no-flex-gap .codeform > * + *, .no-flex-gap .steps > * + * { margin-top: 14px; }
+
+/* ================================================================ cila
+   Hafif ama canlı: tamamı CSS (resim/kütüphane yok), hareketi azalt ayarına uyar. */
+
+/* Ana ekranda yavaşça gezinen sıcak ışık */
+.lobby { position: relative; isolation: isolate; }
+.lobby::before { content: ""; position: absolute; inset: -20% -10% auto -10%; height: 70%; z-index: -1; pointer-events: none;
+  background: radial-gradient(40% 50% at 20% 30%, rgba(255, 107, 61, .16), transparent 70%),
+    radial-gradient(35% 45% at 80% 10%, rgba(120, 80, 255, .12), transparent 70%);
+  animation: drift 18s ease-in-out infinite alternate; }
+@keyframes drift { to { transform: translate3d(4%, 6%, 0) scale(1.08); } }
+
+/* Karşılama: iki ekran, aynı karede, aynı anda ilerleyen çubuk */
+.duo { display: flex; align-items: center; gap: 10px; margin: 4px 0 2px; }
+.duo .scr { position: relative; flex: 1; aspect-ratio: 16 / 10; border-radius: 14px; overflow: hidden;
+  background: linear-gradient(160deg, #3a2a6b, #14102a 55%, #2a0f0a); box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .7), inset 0 0 0 1.5px rgba(255, 255, 255, .08); }
+.duo .scr::before { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(60% 50% at 70% 35%, rgba(255, 196, 120, .55), transparent 70%),
+    linear-gradient(180deg, transparent 55%, rgba(30, 90, 60, .9) 56%, rgba(10, 40, 25, 1)); }
+.duo .scr::after { content: "▶"; position: absolute; left: 12%; top: 22%; font-size: 13px; color: rgba(255, 255, 255, .85); }
+.duo .bar { position: absolute; left: 10%; right: 10%; bottom: 12%; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .25); overflow: hidden; }
+.duo .bar b { display: block; height: 100%; width: 30%; background: var(--accent); border-radius: 4px; animation: play 6s linear infinite; }
+.duo .who { position: absolute; right: 8px; top: 7px; font: 800 10px/1 var(--sans); padding: 4px 7px; border-radius: 99px; background: rgba(11, 11, 12, .7); }
+.duo .two .who { color: var(--p1); }
+.duo .link { display: flex; gap: 4px; }
+.duo .link span { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
+.duo .link span:nth-child(2) { animation-delay: .2s; }
+.duo .link span:nth-child(3) { animation-delay: .4s; }
+@keyframes play { from { width: 8%; } to { width: 96%; } }
+@keyframes blink { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+.marquee .logo { box-shadow: 0 12px 40px -8px rgba(255, 107, 61, .7); animation: glow 3s ease-in-out infinite; }
+@keyframes glow { 50% { box-shadow: 0 14px 50px -6px rgba(255, 107, 61, .95); } }
+
+/* Platform kartları: köşede büyük, soluk baş harf + dokununca parlama */
+.pf::after { content: attr(data-mark); position: absolute; right: -6px; bottom: -22px; font: 800 96px/1 var(--sans);
+  letter-spacing: -.06em; opacity: .1; pointer-events: none; }
+.pf::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, .18) 45%, transparent 60%);
+  transform: translateX(-120%); transition: transform .6s ease; }
+.pf:hover::before, .pf:active::before { transform: translateX(120%); }
+.pf:active { transform: scale(.97); }
+.pf { box-shadow: 0 14px 30px -18px var(--tile2), inset 0 1px 0 rgba(255, 255, 255, .12); }
+
+/* Oda kartında bilet delikleri */
+.ticket { position: relative; }
+.ticket .tear { background-image: radial-gradient(circle at 0 50%, var(--bg) 0 9px, transparent 10px); background-size: 20px 26px;
+  background-repeat: repeat-y; background-position: -10px 0; }
+
+/* Sohbet balonları yumuşakça gelir; benimkiler hafif degrade */
+.msg { animation: pop .22s ease-out; transform-origin: bottom left; }
+.msg.mine { transform-origin: bottom right; }
+.msg.mine .bubble { background: linear-gradient(135deg, var(--accent-hi), var(--accent)); box-shadow: 0 6px 16px -10px rgba(255, 107, 61, .9); }
+@keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.96); } }
+.reacts button { transition: transform .12s; }
+.reacts button:active { transform: scale(1.35) rotate(-8deg); }
+
+/* İzleme paneli: oynat düğmesi parlar, "Senkron" noktası nabız gibi atar */
+.watch { background: linear-gradient(180deg, #1a1a1d, var(--surface) 140px); }
+.tplay { box-shadow: 0 10px 30px -8px rgba(255, 107, 61, .75); }
+.tplay:active { transform: scale(.94); }
+.chip.ok .dot { animation: beat 1.6s ease-in-out infinite; }
+@keyframes beat { 0%, 100% { box-shadow: 0 0 0 0 rgba(61, 220, 132, .5); } 50% { box-shadow: 0 0 0 5px rgba(61, 220, 132, 0); } }
+.sync { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05); }
+
+/* Yüzen hap ve yazma çubuğu: cam görünüm */
+.pill { background: rgba(18, 18, 20, .72); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .08); }
+.pill .btn.icon#fOpen { box-shadow: 0 6px 18px -4px rgba(255, 107, 61, .8); }
+.typebar { background: linear-gradient(180deg, #1b1b1e, var(--surface)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lobby::before, .duo .bar b, .duo .link span, .marquee .logo, .chip.ok .dot, .msg { animation: none; }
+}
+/* Mesaj listesinin üst kenarı yumuşakça kaybolur (yarım kalan balon çizgi gibi görünmesin) */
+.msgs { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px); mask-image: linear-gradient(to bottom, transparent 0, #000 18px); }

@@ -83,6 +83,63 @@ try {
   await sleep(300);
   const cls = await A.ui.evaluate(() => document.getElementById('vFloat').className);
   ok(/up/.test(cls), 'Yüzen hap alt konumda (bildirimler üstte açılır)');
+  // İzlerken yazma çubuğu: sohbet düğmesi → video üstte, altta yazı kutusu; mesaj gider, kapanır
+  await A.ui.setViewportSize({ width: 800, height: 58 });
+  await A.ui.evaluate(() => OI.setLayout({ mode: 'float' }));
+  await sleep(300);
+  const t0 = A.called('setPanel').length;
+  await A.ui.evaluate(() => document.getElementById('fOpen').click());
+  ok(await waitFor(() => A.called('setPanel').slice(t0).includes('type'), 2000), 'Sohbet düğmesi yazma çubuğunu açtı (panel değil)');
+  await sleep(300);
+  const typ = await A.ui.evaluate(() => ({
+    bar: !document.getElementById('vType').hidden,
+    input: !!document.querySelector('#typeSlot #chatInput'),
+    focused: document.activeElement && document.activeElement.id === 'chatInput',
+    panel: !document.getElementById('vWatch').hidden,
+    over: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight,
+  }));
+  ok(typ.bar && typ.input && typ.focused && !typ.panel && !typ.over, 'Yazma çubuğunda yazı kutusu var, odakta, panel kapalı, taşma yok ' + JSON.stringify(typ));
+  if (OUT) await A.ui.screenshot({ path: `${OUT}/yazma-cubugu.png` });
+  await A.ui.locator('#chatInput').fill('izlerken yazdım');
+  await A.ui.locator('#chatInput').press('Enter');
+  ok(await waitFor(() => A.overlays('msg').some((m) => m.name === 'Sen' && m.text === 'izlerken yazdım'), 3000), 'Gönderilen mesaj videonun üstünden aktı');
+  const t1 = A.called('setPanel').length;
+  await A.ui.evaluate(() => OI.onBack());
+  ok(await waitFor(() => A.called('setPanel').slice(t1).includes('closed'), 2000), 'Geri tuşu yazma çubuğunu kapattı (bölümden çıkmadı)');
+  await sleep(300);
+  ok(await A.ui.evaluate(() => !!document.querySelector('#watchChatSlot .chat #chatInput')), 'Yazı kutusu sohbet paneline geri döndü');
+
+  // Katman düğmeleri sitenin düğmelerine değmez (yatay ve dikey)
+  for (const [w, hgt] of [[900, 410], [410, 900]]) {
+    await A.player.setViewportSize({ width: w, height: hgt });
+    await A.player.goto('https://www.disneyplus.com/play/loki?controls=1');
+    await A.player.waitForFunction(() => window.v && v.readyState >= 2, null, { timeout: 10000 });
+    const z0 = A.posts.length;
+    await A.ui.evaluate((b) => OI.setPlayerBox(b), { w, h: hgt });
+    // Bu sayfanın düğme haritası gelsin, sonra seçilen yer
+    await waitFor(() => A.posts.slice(z0).some((m) => m.t === 'zones' && m.land === w > hgt), 8000);
+    await sleep(300);
+    const sp = A.overlays('spots').at(-1);
+    if (process.env.DBG) {
+      const z = A.posts.filter((m) => m.t === 'zones').at(-1);
+      console.log(JSON.stringify(A.overlays('spots')));
+      if (z) for (let r = 0; r < z.rows; r++) console.log(z.bits.slice(r * z.cols, (r + 1) * z.cols), z.land);
+    }
+    const rects = await A.player.evaluate(() => [...document.getElementById('p').shadowRoot.querySelectorAll('#ctl > *')].map((e) => {
+      const r = e.getBoundingClientRect();
+      return { n: e.getAttribute('aria-label') || e.tagName, l: r.left, t: r.top, r: r.right, b: r.bottom };
+    }));
+    const hit = (cx, cy, half) => rects.filter((r) => cx + half > r.l && cx - half < r.r && cy + half > r.t && cy - half < r.b).map((r) => r.n);
+    if (!sp || !sp.back) {
+      ok(false, `${w}x${hgt}: yer seçilmedi ${JSON.stringify(sp)}`);
+      continue;
+    }
+    const bx = sp.back[0] * w, by = sp.back[1] * hgt;
+    const cy = sp.chat * hgt, cx = w - 10 - 27;
+    const hb = hit(bx, by, 23), hc = hit(cx, cy, 27);
+    ok(!hb.length, `${w}x${hgt}: geri düğmesi (${Math.round(bx)},${Math.round(by)}) sitenin düğmelerine değmiyor ${hb.join(',')}`);
+    ok(sp.chat !== null && !hc.length, `${w}x${hgt}: sohbet düğmesi (sağ, y=${Math.round(cy)}) sitenin düğmelerine değmiyor ${hc.join(',')}`);
+  }
   for (const l of A.log) ok(false, l);
 } catch (e) { ok(false, e.stack); } finally { srv.kill(); await browser.close(); await broker.close(); }
 console.log(bad ? `BAŞARISIZ (${bad})` : 'Panel yerleşimi ve kaydırma testi geçti ✔');

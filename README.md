@@ -76,7 +76,7 @@ Oda, uygulama arka plandayken de açık kalır. Kapatmak için karttaki ya da bi
    **Ses dili ve altyazı** da her zamanki gibi oynatıcının kendi menüsünden seçilir (Disney+'ta sağ üstteki konuşma balonu, HBO Max'te sağ alttaki menü). Herkes kendi dilini ve altyazısını ayrı seçebilir; senkronu etkilemez.
 4. Sol üstteki yuvarlak **←** düğmesi bölümden çıkar. Kazara çıkılmasın diye "Bölümden çıkılsın mı?" diye sorar; telefonun geri hareketi de aynı soruyu sorar. Çıkınca video ikinizde de durur.
 5. Panelde:
-   - **Sadece video:** sohbeti gizler, video tam ekran olur (paneli yanda sağa, altta aşağı kaydırmak da aynı işi görür). Gelen mesajlar videonun altından akar: yana kaydırınca kapanır, dokununca sohbet açılır. Turuncu sohbet düğmesiyle sohbet geri açılır; düğme parmakla istenen yere sürüklenebilir, yeri hatırlanır.
+   - **Sadece video:** sohbeti gizler, video tam ekran olur (paneli yanda sağa, altta aşağı kaydırmak da aynı işi görür). Gelen mesajlar videonun altından akar: yana kaydırınca kapanır, dokununca sohbet açılır. Turuncu sohbet düğmesine dokununca altta bir **yazma çubuğu** açılır: video üstte oynamaya devam eder, yazdığın mesaj videonun üstünden akar (geri tuşu ya da ✕ kapatır). Yanındaki küçük düğme paneli açar. Düğme parmakla istenen yere sürüklenebilir, yeri hatırlanır.
    - **Oynat/Durdur, 10 sn geri, 10 sn ileri:** sohbet açıkken videoya dokunmadan kumanda. Basınca ikinizde birden olur.
    - **Dakika:** panelde yazan süre, oynatıcının kendi ilerleme çubuğundan okunur; yani Disney+'ın gösterdiği dakikayla aynıdır.
    - **Durum:** "Senkron" yalnızca ölçülen fark çeyrek saniyenin altındayken yazar; biri geride kaldıysa "Eşitleniyor…", dakika okunamıyorsa "Güvenli mod" yazar.
@@ -117,10 +117,13 @@ Aynı Wi-Fi'da odanın adresini herhangi bir tarayıcıda açarsan (`http://192.
 | Disney+ / HBO Max "desteklenmeyen tarayıcı" diyor | Ayarlarda **Masaüstü görünümü** açık mı? Açıksa o cihazda web oynatıcısı desteklenmiyor demektir; bilgisayarda eklentiyle izleyin. |
 | "Bu hesapta çok fazla cihaz izliyor" | Paketiniz aynı anda kaç ekrana izin veriyorsa o kadar kişi izleyebilir (Disney+ ve HBO Max'in standart paketleri 2 ekran). |
 | Panelde dakika yerine "–:––" yazıyor | Uygulama o sitede videonun kaçıncı dakikada olduğunu okuyamadı. Oynat/durdur yine ikinizde birden çalışır, ama sarma (ileri/geri atlama) yalnızca "10 sn ileri/geri" olarak paylaşılır. Aynı sahneye gelmek için: ikiniz de **durdurun**, kendi oynatıcınızda aynı sahneye gelin, sonra biriniz **oynatsın**. |
+| Soldaki oynatıcının kendi düğmelerine basılamıyor / ±10 sonrası video donuyor | Uygulama masaüstü sitelere fareli bilgisayar gibi görünür ve Disney+'ta sarmayı oynatıcının kendi ±10 tuşuyla yapar; video yine donarsa birkaç saniyede kendiliğinden kurtarılır. Sorun sürerse panelde durum yazısına (ör. "Senkron") dokunup **sorun raporunu** paylaşın: oynatıcının düğmeleri ve son olaylar bir metin olarak gelir (mesajlar, şifre, oda kodu eklenmez). |
+| Panelde "Odada değilsin" yazıyor | Odaya girmeden izliyorsun; her şey normal çalışır, yalnızca eşleme yok. Oda varken bağlantı giderse "Bağlantı koptu · yeniden deneniyor" yazar. |
 | Durdurdum ama diğerinde durmadı | Birkaç saniye içinde kendiliğinden düzelir (uygulama durumu sürekli kontrol edip tekrar uygular). Düzelmezse **Senkronla**'ya dokunun. |
 | Panelde "Eşitleniyor…" yazıyor | Biri takılıp geride kaldı; video birkaç saniyede kendiliğinden yetişir. "Senkron" yalnızca fark gerçekten küçükken (çeyrek saniyenin altında) yazar. |
 | Netflix "tarayıcı desteklenmiyor" diyor | Netflix telefonda web oynatıcıyı engelliyor. Bilgisayarda eklentiyle izleyin. |
 | Güncelleme kartı "imza farklı" diyor | Elle kurulmuş farklı bir sürüm olabilir. Bir kez uygulamayı silip [`dist/OrtakIzle.apk`](dist/OrtakIzle.apk) dosyasını kurun; sonrakiler kendiliğinden güncellenir. |
+| Geri / sohbet düğmesi sitenin düğmesinin üstüne geliyor | Uygulama sitenin düğmelerinin yerini öğrenir ve kendi düğmelerini boş bir yere taşır (ilk dokunuştan sonra birkaç saniye içinde; platform başına hatırlanır). Sohbet düğmesini parmakla da taşıyabilirsiniz. |
 | Reklam arası iki tarafta farklı zamanda geldi | Reklam bitince **Senkronla**'ya dokunun. |
 | "Oynatmak için dokun" yazısı çıkıyor | Tarayıcı sesli videonun kendiliğinden başlamasını engelledi; bir kez dokunmak yeterli. |
 | Netflix uygulamada açılmıyor | Netflix buna izin vermiyor; bilgisayarda eklentiyle izleyin. |

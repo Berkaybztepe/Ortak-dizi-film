@@ -13,9 +13,11 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Message
+import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -74,6 +76,7 @@ class MainActivity : ComponentActivity() {
 
     private var watching = false
     private var panelOpen = true
+    private var typing = false // izlerken yazma çubuğu açık
     private var floatW = 0 // css px
     private var floatH = 0
     private var desktopMode = true
@@ -303,7 +306,14 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun setPanel(state: String) = runOnUiThread {
             panelOpen = state == "open"
+            typing = state == "type"
             relayout()
+            // Yazma çubuğu: klavyeyi aç (video üstte oynamaya devam eder)
+            if (typing) ui.post {
+                ui.requestFocus()
+                (getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
+                    ?.showSoftInput(ui, 0)
+            }
         }
 
         @JavascriptInterface
@@ -344,6 +354,14 @@ class MainActivity : ComponentActivity() {
                 "back" -> {
                     backAllowed = o.optBoolean("show", true)
                     overlay.setBackVisible(watching && backAllowed)
+                }
+                // Sitenin düğmelerine değmeyen yerler (oynatıcı kutusunun oranı olarak)
+                "spots" -> {
+                    val b = o.optJSONArray("back")
+                    if (b != null && b.length() == 2) overlay.setBackSpot(b.optDouble(0).toFloat(), b.optDouble(1).toFloat())
+                    else overlay.setBackSpot(null, null)
+                    autoChatY = if (o.has("chat") && !o.isNull("chat")) o.optDouble("chat").toFloat().takeIf { it in 0f..1f } else null
+                    relayout()
                 }
             }
         }
@@ -415,7 +433,7 @@ class MainActivity : ComponentActivity() {
         fun share(text: String) = runOnUiThread {
             val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
             try {
-                startActivity(Intent.createChooser(send, "Oda adresini gönder"))
+                startActivity(Intent.createChooser(send, "Paylaş"))
             } catch (e: Exception) {
                 Log.w(TAG, "Paylaşım açılamadı", e)
             }
@@ -476,11 +494,17 @@ class MainActivity : ComponentActivity() {
     // olduğu için yalnızca bilinen türler geçer ve JSON yeniden üretilir.
     private val allowedFromPlayer = setOf(
         "hello", "engine", "sync", "tick", "nav", "buffer", "countdown", "react", "invite", "typing", "drift", "notice",
+        "zones", "diag",
     )
 
     private fun fromPlayer(raw: String) {
         if (raw.length > 20_000) return
         val obj = try { JSONObject(raw) } catch (_: Exception) { return }
+        // Sitenin kendi ±10 sn tuşu (gerçek tuş basışı): yalnızca sağ/sol ok, en fazla 60 kez
+        if (obj.optString("t") == "input") {
+            playerKeys(obj.optString("key"), obj.optInt("n", 1).coerceIn(1, 60))
+            return
+        }
         if (obj.optString("t") !in allowedFromPlayer) return
         js("OI.fromPlayer($obj)")
     }
@@ -667,7 +691,27 @@ class MainActivity : ComponentActivity() {
           function def(o, k, v) { try { Object.defineProperty(o, k, { get: function () { return v; }, configurable: true }); } catch (e) {} }
           def(Navigator.prototype, 'platform', 'Win32');
           def(Navigator.prototype, 'vendor', 'Google Inc.');
-          if (/netflix\.com${'$'}/.test(location.hostname)) def(Navigator.prototype, 'maxTouchPoints', 0);
+          // Masaüstü oynatıcılar dokunmatik ekran görünce kendi dokunma kipine geçip düğmelere
+          // basılmasını engelleyebiliyor (Netflix, Disney+): fareli bilgisayar gibi görün
+          def(Navigator.prototype, 'maxTouchPoints', 0);
+          try {
+            ['ontouchstart', 'ontouchmove', 'ontouchend', 'ontouchcancel'].forEach(function (k) {
+              [Window.prototype, Document.prototype, HTMLElement.prototype, Element.prototype].forEach(function (p) {
+                try { delete p[k]; } catch (e) {}
+              });
+              try { delete window[k]; } catch (e) {}
+            });
+          } catch (e) {}
+          try {
+            var mm = window.matchMedia.bind(window);
+            var fix = function (q) {
+              return String(q).replace(/\(\s*(any-)?(pointer|hover)\s*:\s*([a-z-]+)\s*\)/gi, function (all, any, kind, val) {
+                var yes = kind.toLowerCase() === 'pointer' ? val.toLowerCase() === 'fine' : val.toLowerCase() === 'hover';
+                return yes ? '(min-width: 0px)' : '(max-width: -1px)';
+              });
+            };
+            window.matchMedia = function (q) { return mm(fix(q)); };
+          } catch (e) {}
           try {
             var u = navigator.userAgentData;
             if (!u || u.mobile || u.platform !== 'Windows') {
@@ -700,6 +744,28 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
+    // Oynatıcıya gerçek ok tuşu basışı: Disney+ gibi oynatıcılar videonun konumunun dışarıdan
+    // değiştirilmesine dayanamayıp donuyor; kendi ±10 sn tuşlarıyla sarınca sorun olmuyor.
+    private fun playerKeys(key: String, n: Int) {
+        val code = when (key) {
+            "left" -> KeyEvent.KEYCODE_DPAD_LEFT
+            "right" -> KeyEvent.KEYCODE_DPAD_RIGHT
+            else -> return
+        }
+        val wv = player ?: return
+        if (BuildConfig.DEBUG) Log.i(TAG, "Tuş: $key x$n")
+        // Tuşlar odaktaki görünüme gider: kullanıcı yazı yazmıyorsa odağı oynatıcıya ver
+        if (!wv.hasFocus() && !typing) wv.requestFocus()
+        for (i in 0 until n) {
+            wv.postDelayed({
+                if (player !== wv) return@postDelayed
+                val t = SystemClock.uptimeMillis()
+                wv.dispatchKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, code, 0))
+                wv.dispatchKeyEvent(KeyEvent(t, t + 40, KeyEvent.ACTION_UP, code, 0))
+            }, i * 160L)
+        }
+    }
+
     private fun isWeb(u: String) = Uri.parse(u).scheme?.lowercase().let { it == "http" || it == "https" }
 
     private fun openPlayer(url: String) {
@@ -713,6 +779,7 @@ class MainActivity : ComponentActivity() {
         wv.loadUrl(url)
         watching = true
         panelOpen = true
+        typing = false
         playerBox.visibility = View.VISIBLE
         overlay.clear()
         overlay.setBackVisible(backAllowed)
@@ -845,7 +912,7 @@ class MainActivity : ComponentActivity() {
         val (il, itop, ir, ib) = insets.toList()
         val landscape = w > h
         val fullscreen = customView != null
-        val immersive = watching && (landscape || fullscreen || !panelOpen)
+        val immersive = watching && (landscape || fullscreen || !panelOpen || typing)
 
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         if (immersive) {
@@ -871,6 +938,13 @@ class MainActivity : ComponentActivity() {
         if (!watching) {
             mode = "full"
             place(ui, left, top, aw, ah)
+        } else if (typing) {
+            mode = "type"
+            // Video üstte tam genişlik, altta (klavyenin hemen üstünde) yazma çubuğu
+            val bar = dp(58)
+            val ph = max(dp(100), bottom - bar)
+            place(playerBox, 0, 0, w, ph)
+            place(ui, left, ph, aw, bottom - ph)
         } else if (!panelOpen || fullscreen) {
             mode = "float"
             // Oynatıcı tüm ekran (sistem çubukları gizli olduğu için kenarlara kadar)
@@ -898,9 +972,23 @@ class MainActivity : ComponentActivity() {
         }
         ui.bringToFront()
         popup?.bringToFront()
+        // Oynatıcı kutusunun boyutu (dp) arayüze: katman düğmelerinin yeri buna göre seçilir
+        if (watching) {
+            val lp = playerBox.layoutParams
+            val box = "${(lp.width / density).roundToInt()}x${(lp.height / density).roundToInt()}"
+            if (box != lastPlayerBox && lp.width > 0) {
+                lastPlayerBox = box
+                js("window.OI && OI.setPlayerBox && OI.setPlayerBox(${JSONObject().put("w", (lp.width / density).roundToInt()).put("h", (lp.height / density).roundToInt())})")
+            }
+        } else lastPlayerBox = ""
         if (BuildConfig.DEBUG && watching) overlay.postDelayed({
             overlay.backCenter()?.let { Log.i(TAG, "Geri düğmesi: ${it[0]} ${it[1]}") }
             if (lastLayoutMode == "float") logFloat()
+            player?.let { p ->
+                val loc = IntArray(2)
+                p.getLocationOnScreen(loc)
+                Log.i(TAG, "Oynatıcı kutusu: ${loc[0]} ${loc[1]} ${p.width} ${p.height}")
+            }
         }, 400)
         if (mode != lastLayoutMode) {
             lastLayoutMode = mode
@@ -915,6 +1003,8 @@ class MainActivity : ComponentActivity() {
     // Konum, alanın oranı olarak saklanır: fx = hapın sağ kenarı, fy = hapın orta noktası.
     private val prefs by lazy { getSharedPreferences("yerlesim", Context.MODE_PRIVATE) }
     private var floatDragging = false
+    private var autoChatY: Float? = null // sitenin düğmelerinden kaçan varsayılan yükseklik
+    private var lastPlayerBox = ""
     private var floatUp = false
     private var dragX = 0f
     private var dragY = 0f
@@ -926,7 +1016,8 @@ class MainActivity : ComponentActivity() {
     private fun floatSpot(landscape: Boolean, left: Int, top: Int, right: Int, bottom: Int, fw: Int, fh: Int): Pair<Int, Int> {
         val key = if (landscape) "yatay" else "dikey"
         val fx = prefs.getFloat("${key}X", 1f)
-        val fy = prefs.getFloat("${key}Y", if (landscape) 0.5f else 0.93f)
+        // Kullanıcı sürüklediyse onun yeri; yoksa sitenin düğmelerine değmeyen yer; yoksa varsayılan
+        val fy = if (prefs.contains("${key}Y")) prefs.getFloat("${key}Y", 0.5f) else autoChatY ?: if (landscape) 0.5f else 0.93f
         val aw = right - left
         val ah = bottom - top
         val edge = (left + fx * aw).roundToInt().coerceIn(left + min(fw, aw), right)

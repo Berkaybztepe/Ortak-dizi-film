@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server/server.js",
     "test": "node server/test.js && node tools/sync-shared.mjs --check",
-    "test:e2e": "node tests/e2e-extension.mjs && node tests/e2e-app.mjs && node tests/e2e-chaos.mjs && node tests/e2e-clock.mjs && node tests/e2e-precision.mjs && node tests/e2e-admin.mjs && node tests/e2e-explore.mjs && node tests/e2e-layout.mjs",
+    "test:e2e": "node tests/e2e-extension.mjs && node tests/e2e-app.mjs && node tests/e2e-chaos.mjs && node tests/e2e-clock.mjs && node tests/e2e-precision.mjs && node tests/e2e-admin.mjs && node tests/e2e-explore.mjs && node tests/e2e-layout.mjs && node tests/e2e-solo.mjs",
     "sync": "node tools/sync-shared.mjs",
     "test:relay": "node tests/relay.mjs"
   },

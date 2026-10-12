@@ -1,7 +1,7 @@
 {
-  "versionCode": 8,
-  "versionName": "2.4.2",
+  "versionCode": 9,
+  "versionName": "2.5.0",
   "apk": "dist/OrtakIzle.apk",
-  "sha256": "b462e6e8fb4f59caaacb2c88f66fc0af7719a1fc868ae388c8a6f997b339279b",
-  "notes": "Telefonda izleme paneli küçüldü, sohbete yer açıldı; klavye açıkken yalnızca sohbet kalır, video oynamaya devam eder. Sohbet düğmesi dikeyde sağ altta ve sürüklenebilir. Panel, akan mesajlar ve bildirimler kaydırılarak kapatılır."
+  "sha256": "65a8775eaac06e5439ffb8248b2098b1afe913494ceedc63d4407ae59460add6",
+  "notes": "Disney+: soldaki oynatıcının kendi düğmelerine basılabilir; ±10 artık donmuyor (oynatıcının kendi tuşuyla sarılır, donarsa kendiliğinden kurtulur). Odasızken/bağlantı yokken uygulama videoya hiç karışmaz. İzlerken yazma çubuğu, daha geniş sohbet, geri ve sohbet düğmeleri sitenin düğmelerine değmez. Yeni görünüm, sorun raporu."
 }
