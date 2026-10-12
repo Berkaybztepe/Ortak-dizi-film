@@ -1,0 +1,12 @@
+{
+  "name": "ortak-izle-sunucu",
+  "version": "2.0.0",
+  "description": "Ortak İzle oda sunucusu (bağımlılık yok). Arayüz dosyalarını ../web klasöründen sunar.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}

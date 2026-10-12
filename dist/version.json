@@ -1,0 +1,7 @@
+{
+  "versionCode": 17,
+  "versionName": "2.7.6",
+  "apk": "dist/OrtakIzle.apk",
+  "sha256": "2cb48b6e5216c86075c0e3ec92ab738e341cb5502c435055b59a56e3dc08c119",
+  "notes": "Biri yüklenirken (kötü internet) diğeri 60 sn'ye kadar bekler"
+}

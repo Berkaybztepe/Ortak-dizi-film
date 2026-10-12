@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Oda sunucusu ev ağında şifresiz (ws://) çalışır -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
